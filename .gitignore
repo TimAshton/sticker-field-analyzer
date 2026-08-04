@@ -1,32 +1,42 @@
 # =========================================================================
-# Terraform Runtime & Cache Files (Do not commit)
+# Mac OS System Metadata (CRITICAL to block)
 # =========================================================================
-# Local hidden working directory created by 'terraform init'
+.DS_Store
+**/.DS_Store
+._*
+
+# =========================================================================
+# Local Python Environment & Virtual Directories
+# =========================================================================
+.venv/
+venv/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# =========================================================================
+# Local Image Artifacts & Processed Folders (Do not commit crops!)
+# =========================================================================
+processed_stickers/
+cropped_sticker_*.png
+extracted_sticker_*.png
+
+# =========================================================================
+# AI Model Weights & Large Binaries (Massive files)
+# =========================================================================
+*.pt
+*.pth
+yolov8n.pt
+yolov8n-oiv7.pt
+
+# =========================================================================
+# Terraform Runtime & Local Configurations (From your earlier step)
+# =========================================================================
 .terraform/
-
-# Provider lock file containing checksums (Keep this if you want strict versions, 
-# but for a simple single-developer study project, it's safer to ignore to prevent conflicts)
 .terraform.lock.hcl
-
-# =========================================================================
-# Terraform State Files (CRITICAL: Contains raw infrastructure secrets)
-# =========================================================================
 *.tfstate
 *.tfstate.*
-
-# Crash logs and execution plans
-crash.log
-crash.*
 *.tfplan
 *.tfvars
-!*.example.tfvars
-
-# Override files (local developer adjustments)
-override.tf
-override.tf.json
-*_override.tf
-*_override.tf.json
-
-# Ignore CLI configuration files
-.terraformrc
-terraform.rc
