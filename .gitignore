@@ -1,0 +1,32 @@
+# =========================================================================
+# Terraform Runtime & Cache Files (Do not commit)
+# =========================================================================
+# Local hidden working directory created by 'terraform init'
+.terraform/
+
+# Provider lock file containing checksums (Keep this if you want strict versions, 
+# but for a simple single-developer study project, it's safer to ignore to prevent conflicts)
+.terraform.lock.hcl
+
+# =========================================================================
+# Terraform State Files (CRITICAL: Contains raw infrastructure secrets)
+# =========================================================================
+*.tfstate
+*.tfstate.*
+
+# Crash logs and execution plans
+crash.log
+crash.*
+*.tfplan
+*.tfvars
+!*.example.tfvars
+
+# Override files (local developer adjustments)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Ignore CLI configuration files
+.terraformrc
+terraform.rc
