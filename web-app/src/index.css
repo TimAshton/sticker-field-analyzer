@@ -1,0 +1,106 @@
+@import url('https://fonts.googleapis.com/css2?family=Antonio:wght@400..700&display=swap');
+
+:root {
+  --lcars-black: #000000;
+  --lcars-orange: #ff9c00;
+  --lcars-peach: #ffcc99;
+  --lcars-lilac: #cc99cc;
+  --lcars-blue: #9999ff;
+  --lcars-red: #cc6666;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--lcars-black);
+  color: var(--lcars-orange);
+  font-family: 'Antonio', 'Helvetica Neue', sans-serif;
+  letter-spacing: 0.03em;
+}
+
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Nav bar styled as the LCARS elbow/header bar */
+nav {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 !important;
+  background: var(--lcars-black);
+}
+
+nav a {
+  color: var(--lcars-black);
+  text-decoration: none;
+  text-transform: uppercase;
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0.9rem 1.6rem;
+  background: var(--lcars-orange);
+  transition: background 0.15s ease;
+}
+
+nav a:nth-child(2) { background: var(--lcars-lilac); }
+nav a:nth-child(3) { background: var(--lcars-blue); }
+
+nav a:hover {
+  background: var(--lcars-peach);
+}
+
+nav a:first-child {
+  border-radius: 999px 0 0 999px;
+  padding-left: 2.2rem;
+}
+
+nav a:last-child {
+  border-radius: 0 999px 999px 0;
+  padding-right: 2.2rem;
+}
+
+/* Page content area */
+main, div > div {
+  padding: 2rem;
+}
+
+h1 {
+  text-transform: uppercase;
+  color: var(--lcars-orange);
+  font-size: 2.4rem;
+  border-bottom: 4px solid var(--lcars-orange);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+button {
+  background: var(--lcars-orange);
+  color: var(--lcars-black);
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1.6rem;
+  font-family: 'Antonio', sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--lcars-peach);
+}
+
+button:disabled {
+  background: #444;
+  color: #888;
+  cursor: not-allowed;
+}
+
+input[type="file"] {
+  color: var(--lcars-blue);
+}
