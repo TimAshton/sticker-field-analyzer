@@ -1,3 +1,5 @@
+import StickerCard from "../components/StickerCard";
+
 function StickerBook() {
   const stickers: { id: string; imageUrl: string }[] = []
 
@@ -13,6 +15,7 @@ function StickerBook() {
           ))}
         </div>
       )}
+      <StickerCard title="My First Sticker" />
     </div>
   )
 }
