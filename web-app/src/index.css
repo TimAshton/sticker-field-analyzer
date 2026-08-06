@@ -104,3 +104,7 @@ button:disabled {
 input[type="file"] {
   color: var(--lcars-blue);
 }
+
+.sticker-card {
+  border: 1px solid var(--lcars-orange)
+}
