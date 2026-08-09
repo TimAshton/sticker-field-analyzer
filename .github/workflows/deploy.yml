@@ -40,13 +40,6 @@ jobs:
       # Uses the same OIDC role. That role's trust policy already scopes
       # this repo, so it's safe to assume before we even know the
       # deploy-time bucket/role values.
-      - name: DEBUG - Print OIDC token claims
-        run: |
-          TOKEN=$(curl -sSL -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r '.value')
-          echo "$TOKEN" | cut -d '.' -f2 | base64 -d 2>/dev/null | jq '.' || \
-          echo "$TOKEN" | cut -d '.' -f2 | tr '_-' '/+' | base64 -d 2>/dev/null | jq '.'
-
       - name: Configure AWS credentials (bootstrap)
         uses: aws-actions/configure-aws-credentials@v4
         with:

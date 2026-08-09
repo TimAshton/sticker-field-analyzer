@@ -184,7 +184,7 @@ resource "aws_iam_role" "github_cicd" {
           }
           StringLike = {
             # Change this to match your actual GitHub username/repo string
-            "token.actions.githubusercontent.com:sub" = "repo:TimAshton/sticker-field-analyzer:*"
+            "token.actions.githubusercontent.com:sub" = "repo:TimAshton@*/sticker-field-analyzer@*:*"
           }
         }
       }
