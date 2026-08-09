@@ -142,3 +142,99 @@ resource "aws_s3_bucket_cors_configuration" "app_cors" {
     expose_headers  = ["ETag"]
   }
 }
+
+# Add this to the bottom of your main.tf file
+output "webapp_bucket_name" {
+  value       = aws_s3_bucket.webapp.id
+  description = "The name of the S3 bucket for the React web app"
+}
+
+output "cloudfront_distribution_id" {
+  value       = aws_cloudfront_distribution.cdn.id
+  description = "The CloudFront Distribution ID to invalidate"
+}
+
+# Create the OIDC Provider for GitHub, since it doesn't exist yet in this account
+resource "aws_iam_openid_connect_provider" "github" {
+  url             = "https://token.actions.githubusercontent.com"
+  client_id_list  = ["sts.amazonaws.com"]
+  # GitHub's OIDC thumbprint (current as of the token.actions.githubusercontent.com root CA)
+  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+}
+
+# Create the IAM Role for the GitHub runner
+resource "aws_iam_role" "github_cicd" {
+  name = "sticker-field-analyzer-cicd-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = aws_iam_openid_connect_provider.github.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+        Condition = {
+          StringEquals = {
+            "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+          }
+          StringLike = {
+            # Change this to match your actual GitHub username/repo string
+            "token.actions.githubusercontent.com:sub" = "repo:TimAshton/sticker-field-analyzer:*"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Attach permissions to the CI/CD Role
+resource "aws_iam_role_policy" "cicd_permissions" {
+  name = "cicd-s3-cloudfront-policy"
+  role = aws_iam_role.github_cicd.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:ListBucket",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          aws_s3_bucket.webapp.arn,
+          "${aws_s3_bucket.webapp.arn}/*"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudfront:CreateInvalidation"
+        ]
+        Resource = aws_cloudfront_distribution.cdn.arn
+      },
+      {
+        # Needed so `terraform init` / `terraform output` work inside GitHub Actions
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::sticker-field-analyzer-tfstate-251500384433",
+          "arn:aws:s3:::sticker-field-analyzer-tfstate-251500384433/*"
+        ]
+      }
+    ]
+  })
+}
+
+output "cicd_role_arn" {
+  value = aws_iam_role.github_cicd.arn
+}
+
