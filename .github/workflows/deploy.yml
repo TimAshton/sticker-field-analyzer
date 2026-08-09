@@ -12,6 +12,7 @@ permissions:
 env:
   AWS_REGION: us-west-2
   TF_DIR: terraform/environments/dev
+  APP_DIR: webapp
 
 jobs:
   deploy:
@@ -25,11 +26,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+          cache-dependency-path: ${{ env.APP_DIR }}/package-lock.json
 
       - name: Install dependencies
+        working-directory: ${{ env.APP_DIR }}
         run: npm ci
 
       - name: Build
+        working-directory: ${{ env.APP_DIR }}
         run: npm run build
 
       # --- Bootstrap credentials just to read Terraform outputs ---
@@ -61,7 +65,7 @@ jobs:
 
       - name: Sync build to S3
         run: |
-          aws s3 sync ./dist s3://${{ steps.tf.outputs.s3_bucket }} --delete
+          aws s3 sync ./${{ env.APP_DIR }}/dist s3://${{ steps.tf.outputs.s3_bucket }} --delete
 
       - name: Invalidate CloudFront cache
         run: |
