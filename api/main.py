@@ -1,7 +1,6 @@
 import os
 import uuid
 from fastapi import FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import boto3
 from botocore.exceptions import ClientError
@@ -9,20 +8,13 @@ from mangum import Mangum
 
 app = FastAPI(title="Sticker Field Analyzer API")
 
-# Configure CORS so your React application can communicate with the backend.
-# ALLOWED_ORIGIN is set via Lambda environment variables (see terraform) to
-# your CloudFront domain in production; localhost stays available for local dev.
-_allowed_origins = ["http://localhost:3000"]
-if os.getenv("ALLOWED_ORIGIN"):
-    _allowed_origins.append(os.getenv("ALLOWED_ORIGIN"))
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_allowed_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS is handled entirely by the Lambda Function URL's built-in CORS config
+# (see terraform/environments/dev/lambda.tf). AWS intercepts OPTIONS preflight
+# requests before they reach this app and adds the Access-Control-Allow-*
+# headers to every response automatically. Adding FastAPI's CORSMiddleware
+# here as well causes duplicate Access-Control-Allow-Origin headers, which
+# browsers reject even when the values match - so we deliberately don't
+# configure CORS at the application layer.
 
 # Initialize S3 client (Uses IAM credentials configured in your environment)
 s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-west-2"))
