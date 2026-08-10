@@ -35,6 +35,8 @@ jobs:
       - name: Build
         working-directory: ${{ env.APP_DIR }}
         run: npm run build
+        env:
+          VITE_PRESIGN_API_URL: ${{ vars.PRESIGN_API_URL }}
 
       # --- Bootstrap credentials just to read Terraform outputs ---
       # Uses the same OIDC role. That role's trust policy already scopes

@@ -40,3 +40,9 @@ yolov8n-oiv7.pt
 *.tfstate.*
 *.tfplan
 *.tfvars
+
+
+web-app/.env
+
+api/build/
+terraform/environments/dev/lambda_package.zip

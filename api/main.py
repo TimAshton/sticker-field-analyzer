@@ -5,20 +5,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import boto3
 from botocore.exceptions import ClientError
+from mangum import Mangum
 
 app = FastAPI(title="Sticker Field Analyzer API")
 
-# Configure CORS so your React application can communicate with the backend
+# Configure CORS so your React application can communicate with the backend.
+# ALLOWED_ORIGIN is set via Lambda environment variables (see terraform) to
+# your CloudFront domain in production; localhost stays available for local dev.
+_allowed_origins = ["http://localhost:3000"]
+if os.getenv("ALLOWED_ORIGIN"):
+    _allowed_origins.append(os.getenv("ALLOWED_ORIGIN"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Initialize S3 client (Uses IAM credentials configured in your environment)
-s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
+s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-west-2"))
 BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "YOUR_TERRAFORM_COMPUTED_BUCKET_NAME")
 
 # Allowed image mime-types for the sticker field analyzer app
@@ -71,3 +78,9 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate upload credentials. Please try again."
         )
+
+
+# Lambda entrypoint - Mangum adapts the ASGI app to the API Gateway/Function URL
+# event format. This is only used when running in Lambda; running locally via
+# `uvicorn main:app --reload` still works unaffected.
+handler = Mangum(app)
