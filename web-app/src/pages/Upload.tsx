@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, type FormEvent, type ChangeEvent } from 'react'
 
 // Set this in web-app/.env (local) and as a build-time env var in CI:
 //   VITE_PRESIGN_API_URL=https://6hbbhppr54ze25qdrsabg6wanm0iwzja.lambda-url.us-west-2.on.aws
@@ -12,7 +12,7 @@ function Upload() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [objectKey, setObjectKey] = useState<string | null>(null)
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     setFile(e.target.files?.[0] ?? null)
     setStatus('idle')
     setErrorMessage(null)
