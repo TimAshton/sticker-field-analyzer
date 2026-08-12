@@ -27,9 +27,12 @@ resource "aws_iam_role_policy_attachment" "presign_api_logs" {
 }
 
 # Scoped tightly to just the stickers/ prefix this Lambda writes to -
-# not full bucket access, and no delete/list permissions.
+# not full bucket access, and no delete/list permissions. Also reads
+# display/ so it can generate presigned view URLs for GET /api/images -
+# note the permission is required for the *presigned URL itself* to work
+# when a browser later uses it, not just for generating it.
 resource "aws_iam_role_policy" "presign_api_s3" {
-  name = "presign-api-s3-put"
+  name = "presign-api-s3-access"
   role = aws_iam_role.presign_api_lambda.id
 
   policy = jsonencode({
@@ -39,6 +42,11 @@ resource "aws_iam_role_policy" "presign_api_s3" {
         Effect   = "Allow"
         Action   = ["s3:PutObject"]
         Resource = "${aws_s3_bucket.sticker_images.arn}/stickers/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.sticker_images.arn}/display/*"
       }
     ]
   })
@@ -47,7 +55,7 @@ resource "aws_iam_role_policy" "presign_api_s3" {
 # Only PutItem - this Lambda creates the initial pipeline record, it never
 # reads or updates existing items (later pipeline stages own those writes).
 resource "aws_iam_role_policy" "presign_api_dynamodb" {
-  name = "presign-api-dynamodb-put"
+  name = "presign-api-dynamodb-access"
   role = aws_iam_role.presign_api_lambda.id
 
   policy = jsonencode({
@@ -57,6 +65,11 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem"]
         Resource = aws_dynamodb_table.sticker_pipeline.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query"]
+        Resource = "${aws_dynamodb_table.sticker_pipeline.arn}/index/status-index"
       }
     ]
   })
@@ -90,7 +103,7 @@ resource "aws_lambda_function_url" "presign_api" {
 
   cors {
     allow_origins     = ["http://localhost:3000", "https://${aws_cloudfront_distribution.cdn.domain_name}"]
-    allow_methods     = ["POST"]
+    allow_methods     = ["POST", "GET"]
     allow_headers     = ["content-type"]
     allow_credentials = false
     max_age           = 300

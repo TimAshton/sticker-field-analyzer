@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import boto3
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 from mangum import Mangum
 
@@ -39,6 +40,15 @@ class PresignedUrlResponse(BaseModel):
     upload_url: str
     object_key: str
     image_id: str
+
+class ImageListItem(BaseModel):
+    image_id: str
+    status: str
+    display_url: str
+    created_at: str
+
+class ImageListResponse(BaseModel):
+    images: list[ImageListItem]
 
 @app.post(
     "/api/get-presigned-url", 
@@ -98,6 +108,57 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate upload credentials. Please try again."
         )
+
+
+@app.get(
+    "/api/images",
+    response_model=ImageListResponse,
+)
+async def list_images():
+    # Query the status-index GSI rather than scanning the whole table -
+    # only images the ingest Lambda has finished resizing are worth
+    # showing, so this naturally excludes still-processing or failed ones.
+    # sk="METADATA" items use display_ready/uploaded/failed; CROP items use
+    # a different status vocabulary (pending/enriched), so this query only
+    # ever matches image records, not sticker crops.
+    try:
+        result = pipeline_table.query(
+            IndexName="status-index",
+            KeyConditionExpression=Key("status").eq("display_ready"),
+            ScanIndexForward=False,  # most recently updated first
+        )
+    except ClientError as e:
+        print(f"AWS ClientError: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load images. Please try again."
+        )
+
+    images = []
+    for item in result.get("Items", []):
+        display_key = item.get("display_key")
+        if not display_key:
+            continue
+
+        # The bucket is private, so the frontend needs a temporary signed
+        # URL to actually load each <img> - these last an hour, long enough
+        # for a browsing session without leaving objects permanently public.
+        view_url = s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": BUCKET_NAME, "Key": display_key},
+            ExpiresIn=3600,
+        )
+
+        images.append(
+            ImageListItem(
+                image_id=item["image_id"],
+                status=item["status"],
+                display_url=view_url,
+                created_at=item.get("created_at", ""),
+            )
+        )
+
+    return ImageListResponse(images=images)
 
 
 # Lambda entrypoint - Mangum adapts the ASGI app to the API Gateway/Function URL
