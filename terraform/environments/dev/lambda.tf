@@ -44,6 +44,24 @@ resource "aws_iam_role_policy" "presign_api_s3" {
   })
 }
 
+# Only PutItem - this Lambda creates the initial pipeline record, it never
+# reads or updates existing items (later pipeline stages own those writes).
+resource "aws_iam_role_policy" "presign_api_dynamodb" {
+  name = "presign-api-dynamodb-put"
+  role = aws_iam_role.presign_api_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.sticker_pipeline.arn
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "presign_api" {
   function_name = "sticker-field-analyzer-presign-api"
   role          = aws_iam_role.presign_api_lambda.arn
@@ -57,8 +75,9 @@ resource "aws_lambda_function" "presign_api" {
 
   environment {
     variables = {
-      S3_BUCKET_NAME = aws_s3_bucket.sticker_images.id
-      ALLOWED_ORIGIN = "https://${aws_cloudfront_distribution.cdn.domain_name}"
+      S3_BUCKET_NAME     = aws_s3_bucket.sticker_images.id
+      ALLOWED_ORIGIN     = "https://${aws_cloudfront_distribution.cdn.domain_name}"
+      DYNAMODB_TABLE_NAME = aws_dynamodb_table.sticker_pipeline.name
     }
   }
 }

@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import boto3
@@ -20,6 +21,13 @@ app = FastAPI(title="Sticker Field Analyzer API")
 s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-west-2"))
 BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "YOUR_TERRAFORM_COMPUTED_BUCKET_NAME")
 
+# DynamoDB table tracking image/sticker pipeline status (see dynamodb.tf).
+# Single-table design: PK=image_id, SK="METADATA" for the image record,
+# SK="CROP#<id>" for each extracted sticker (written by later pipeline stages).
+dynamodb = boto3.resource("dynamodb", region_name=os.getenv("AWS_REGION", "us-west-2"))
+TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "YOUR_TERRAFORM_COMPUTED_TABLE_NAME")
+pipeline_table = dynamodb.Table(TABLE_NAME)
+
 # Allowed image mime-types for the sticker field analyzer app
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -30,6 +38,7 @@ class PresignedUrlRequest(BaseModel):
 class PresignedUrlResponse(BaseModel):
     upload_url: str
     object_key: str
+    image_id: str
 
 @app.post(
     "/api/get-presigned-url", 
@@ -44,10 +53,13 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
             detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_TYPES)}"
         )
 
-    # 2. Sanitize and generate a unique file name using a UUID4 hash string
-    # This prevents directory traversal attacks and key collisions in S3
+    # 2. Sanitize and generate a unique file name using a UUID4 hash string.
+    # This same id doubles as the DynamoDB partition key for this image, so
+    # the S3 key and the pipeline record are always linked.
+    # This prevents directory traversal attacks and key collisions in S3.
+    image_id = str(uuid.uuid4())
     file_extension = payload.client_filename.split(".")[-1].lower()
-    unique_key = f"stickers/{uuid.uuid4()}.{file_extension}"
+    unique_key = f"stickers/{image_id}.{file_extension}"
 
     try:
         # 3. Request a short-lived PUT URL from S3 (expires in 5 minutes)
@@ -60,8 +72,24 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
             },
             ExpiresIn=300, # 5 minutes execution window
         )
-        
-        return PresignedUrlResponse(upload_url=url, object_key=unique_key)
+
+        # 4. Write the initial pipeline record. status="uploaded" means the
+        # client has a URL but hasn't necessarily PUT the file to S3 yet -
+        # later stages (ingest Lambda, triggered by the actual S3 upload
+        # event) move this to display_ready / extracted / enrichment_complete.
+        now = datetime.now(timezone.utc).isoformat()
+        pipeline_table.put_item(
+            Item={
+                "image_id": image_id,
+                "sk": "METADATA",
+                "status": "uploaded",
+                "source_key": unique_key,
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+
+        return PresignedUrlResponse(upload_url=url, object_key=unique_key, image_id=image_id)
 
     except ClientError as e:
         # Avoid leaking internal AWS metadata; log it internally and send a generic 500
