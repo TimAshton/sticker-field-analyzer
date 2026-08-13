@@ -1,10 +1,11 @@
 import os
 import urllib.parse
 from datetime import datetime, timezone
+from decimal import Decimal
 from io import BytesIO
 
 import boto3
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ExifTags
 
 s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-west-2"))
 dynamodb = boto3.resource("dynamodb", region_name=os.getenv("AWS_REGION", "us-west-2"))
@@ -33,22 +34,27 @@ def handler(event, context):
         display_key = f"display/{image_id}.jpg"
 
         try:
-            _create_display_copy(bucket, source_key, display_key)
-            _update_status(image_id, display_key, status_value="display_ready")
+            gps = _create_display_copy(bucket, source_key, display_key)
+            _update_status(image_id, display_key, status_value="display_ready", gps=gps)
         except Exception as e:
             # Log and mark this image as failed rather than raising, so a
             # single bad upload doesn't retry-loop or block other records
             # in a batch.
             print(f"Failed to process {source_key}: {e}")
-            _update_status(image_id, display_key=None, status_value="failed")
+            _update_status(image_id, display_key=None, status_value="failed", gps=None)
 
     return {"statusCode": 200}
 
 
-def _create_display_copy(bucket: str, source_key: str, display_key: str) -> None:
+def _create_display_copy(bucket: str, source_key: str, display_key: str) -> dict | None:
     raw = s3_client.get_object(Bucket=bucket, Key=source_key)["Body"].read()
 
     with Image.open(BytesIO(raw)) as img:
+        # Extract GPS data BEFORE any resize/re-save - Pillow's save() drops
+        # EXIF entirely unless explicitly re-attached, so this is the only
+        # point where the original location metadata is still available.
+        gps = _extract_gps(img)
+
         # Respect EXIF orientation (phone photos are frequently rotated via
         # metadata rather than actual pixel data) before resizing.
         img = ImageOps.exif_transpose(img)
@@ -66,8 +72,57 @@ def _create_display_copy(bucket: str, source_key: str, display_key: str) -> None
         ContentType="image/jpeg",
     )
 
+    return gps
 
-def _update_status(image_id: str, display_key: str | None, status_value: str) -> None:
+
+def _extract_gps(img: Image.Image) -> dict | None:
+    """
+    Reads GPSLatitude/GPSLongitude from EXIF if present. Most photos won't
+    have this - screenshots, downloaded images, or photos taken with
+    location services off - so returning None here is the normal case,
+    not an error.
+    """
+    try:
+        exif = img.getexif()
+        gps_ifd = exif.get_ifd(ExifTags.IFD.GPSInfo)
+        if not gps_ifd:
+            return None
+
+        lat_dms = gps_ifd.get(2)   # GPSLatitude
+        lat_ref = gps_ifd.get(1)   # GPSLatitudeRef ('N' or 'S')
+        lon_dms = gps_ifd.get(4)   # GPSLongitude
+        lon_ref = gps_ifd.get(3)   # GPSLongitudeRef ('E' or 'W')
+
+        if not (lat_dms and lon_dms and lat_ref and lon_ref):
+            return None
+
+        latitude = _dms_to_decimal(lat_dms, lat_ref)
+        longitude = _dms_to_decimal(lon_dms, lon_ref)
+
+        return {
+            # DynamoDB's boto3 resource layer requires Decimal, not float
+            "latitude": Decimal(str(round(latitude, 6))),
+            "longitude": Decimal(str(round(longitude, 6))),
+        }
+    except (TypeError, ZeroDivisionError, KeyError, AttributeError):
+        # Malformed GPS EXIF shouldn't fail the whole upload - just skip it
+        return None
+
+
+def _dms_to_decimal(dms, ref: str) -> float:
+    degrees, minutes, seconds = dms
+    decimal = float(degrees) + float(minutes) / 60 + float(seconds) / 3600
+    if ref in ("S", "W"):
+        decimal = -decimal
+    return decimal
+
+
+def _update_status(
+    image_id: str,
+    display_key: str | None,
+    status_value: str,
+    gps: dict | None,
+) -> None:
     now = datetime.now(timezone.utc).isoformat()
 
     update_expr = "SET #status = :status, updated_at = :updated_at"
@@ -77,6 +132,11 @@ def _update_status(image_id: str, display_key: str | None, status_value: str) ->
     if display_key is not None:
         update_expr += ", display_key = :display_key"
         expr_values[":display_key"] = display_key
+
+    if gps is not None:
+        update_expr += ", latitude = :latitude, longitude = :longitude"
+        expr_values[":latitude"] = gps["latitude"]
+        expr_values[":longitude"] = gps["longitude"]
 
     pipeline_table.update_item(
         Key={"image_id": image_id, "sk": "METADATA"},
