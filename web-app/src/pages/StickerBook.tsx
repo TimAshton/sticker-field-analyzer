@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import StickerCard from "../components/StickerCard";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
@@ -54,14 +55,14 @@ function StickerBook() {
   }
 
   return (
-    <div>
+    <div style={{ width: '100%' }}>
       <h1>Sticker Book</h1>
       {loading && <p>Loading stickers...</p>}
       {errorMessage && <p style={{ color: 'red' }}>Error: {errorMessage}</p>}
       {!loading && !errorMessage && stickers.length === 0 ? (
         <p>No stickers yet. Upload one to get started.</p>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', width: '100%' }}>
           {stickers.map((sticker) => (
             <button
               key={sticker.id}
@@ -77,6 +78,8 @@ function StickerBook() {
           ))}
         </div>
       )}
+      <StickerCard title="My First Sticker" />
+
       {selected && (
         <div
           onClick={() => setSelected(null)}
