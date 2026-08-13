@@ -67,7 +67,11 @@ function StickerBook() {
             <button
               key={sticker.id}
               onClick={() => setSelected(sticker)}
-              style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', lineHeight: 0 }}
+              style={{
+                padding: 0, cursor: 'pointer', lineHeight: 0,
+                border: '3px solid #FF9C00', borderRadius: '8px',
+                background: 'none', overflow: 'hidden',
+              }}
             >
               <img src={sticker.imageUrl} alt="Sticker" style={{ width: '100%', display: 'block' }} />
             </button>
