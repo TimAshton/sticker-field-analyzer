@@ -78,7 +78,7 @@ function StickerBook() {
           ))}
         </div>
       )}
-      <StickerCard title="My First Sticker" />
+
 
       {selected && (
         <div
