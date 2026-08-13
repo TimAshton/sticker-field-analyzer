@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import StickerCard from "../components/StickerCard";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
@@ -78,8 +77,6 @@ function StickerBook() {
           ))}
         </div>
       )}
-      <StickerCard title="My First Sticker" />
-
       {selected && (
         <div
           onClick={() => setSelected(null)}
