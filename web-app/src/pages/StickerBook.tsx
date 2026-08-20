@@ -2,11 +2,19 @@ import { useState, useEffect } from "react";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
+type Match = {
+  stickerId: string
+  artist: string
+  designName: string
+  similarity: number
+}
+
 type Sticker = {
   id: string
   imageUrl: string
   status: string
   createdAt: string
+  matches: Match[]
 }
 
 function StickerBook() {
@@ -28,11 +36,20 @@ function StickerBook() {
         if (cancelled) return
 
         setStickers(
-          data.images.map((img: { image_id: string; display_url: string; status: string; created_at: string }) => ({
+          data.images.map((img: {
+            image_id: string; display_url: string; status: string; created_at: string
+            matches: { sticker_id: string; artist: string; design_name: string; similarity: number }[]
+          }) => ({
             id: img.image_id,
             imageUrl: img.display_url,
             status: img.status,
             createdAt: img.created_at,
+            matches: (img.matches ?? []).map((m) => ({
+              stickerId: m.sticker_id,
+              artist: m.artist,
+              designName: m.design_name,
+              similarity: m.similarity,
+            })),
           }))
         )
       } catch (err) {
@@ -101,6 +118,18 @@ function StickerBook() {
               <p>Status: {selected.status}</p>
               <p>Uploaded: {formattedDate(selected.createdAt)}</p>
               <p>ID: {selected.id}</p>
+              {selected.matches.length > 0 && (
+                <div>
+                  <p>Matched known stickers:</p>
+                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
+                    {selected.matches.map((match) => (
+                      <li key={match.stickerId}>
+                        {match.designName || 'Untitled'} by {match.artist || 'Unknown'} ({(match.similarity * 100).toFixed(0)}% match)
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <button onClick={() => setSelected(null)}>Close</button>
           </div>

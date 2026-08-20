@@ -61,11 +61,18 @@ class PresignedUrlResponse(BaseModel):
     object_key: str
     image_id: str
 
+class MatchItem(BaseModel):
+    sticker_id: str
+    artist: str
+    design_name: str
+    similarity: float
+
 class ImageListItem(BaseModel):
     image_id: str
     status: str
     display_url: str
     created_at: str
+    matches: list[MatchItem]
 
 class ImageListResponse(BaseModel):
     images: list[ImageListItem]
@@ -254,10 +261,35 @@ async def list_images():
                 status=item["status"],
                 display_url=view_url,
                 created_at=item.get("created_at", ""),
+                matches=_get_matches(item["image_id"]),
             )
         )
 
     return ImageListResponse(images=images)
+
+
+def _get_matches(image_id: str) -> list[MatchItem]:
+    # One Query per image (base table, not the GSI) for its logged MATCH#
+    # items - see match_lambda.tf/embedding/match.py for how these get
+    # written. Best-effort: a failure here shouldn't take down the whole
+    # image list, just that image's match info.
+    try:
+        result = pipeline_table.query(
+            KeyConditionExpression=Key("image_id").eq(image_id) & Key("sk").begins_with("MATCH#"),
+        )
+    except ClientError as e:
+        print(f"AWS ClientError fetching matches for {image_id}: {e}")
+        return []
+
+    return [
+        MatchItem(
+            sticker_id=match["matched_sticker_id"],
+            artist=match.get("artist", ""),
+            design_name=match.get("design_name", ""),
+            similarity=float(match["similarity"]),
+        )
+        for match in result.get("Items", [])
+    ]
 
 
 @app.get(

@@ -52,8 +52,12 @@ resource "aws_iam_role_policy" "presign_api_s3" {
   })
 }
 
-# Only PutItem - this Lambda creates the initial pipeline record, it never
-# reads or updates existing items (later pipeline stages own those writes).
+# PutItem creates the initial pipeline record; this Lambda never updates
+# existing items (later pipeline stages own those writes). Query on the
+# status-index GSI backs GET /api/images' "all display_ready images" list;
+# Query on the base table backs that same route's per-image MATCH# lookup
+# (Key(image_id) & sk begins_with "MATCH#") so the frontend can show
+# whether an upload matched anything in the known-sticker catalog.
 resource "aws_iam_role_policy" "presign_api_dynamodb" {
   name = "presign-api-dynamodb-access"
   role = aws_iam_role.presign_api_lambda.id
@@ -69,7 +73,10 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
       {
         Effect   = "Allow"
         Action   = ["dynamodb:Query"]
-        Resource = "${aws_dynamodb_table.sticker_pipeline.arn}/index/status-index"
+        Resource = [
+          aws_dynamodb_table.sticker_pipeline.arn,
+          "${aws_dynamodb_table.sticker_pipeline.arn}/index/status-index"
+        ]
       }
     ]
   })
