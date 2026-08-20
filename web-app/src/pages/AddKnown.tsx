@@ -6,8 +6,8 @@ type UploadStatus = 'idle' | 'requesting' | 'uploading' | 'success' | 'error'
 
 function AddKnown() {
   const [file, setFile] = useState<File | null>(null)
-  const [artist, setArtist] = useState('')
-  const [designName, setDesignName] = useState('')
+  const [artist] = useState('unknown')
+  const [designName, setDesignName] = useState('New Ref')
   const [status, setStatus] = useState<UploadStatus>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [stickerId, setStickerId] = useState<string | null>(null)
@@ -75,14 +75,6 @@ function AddKnown() {
       <form onSubmit={handleSubmit}>
         <div>
           <input type="file" accept="image/*" onChange={handleFileChange} />
-        </div>
-        <div>
-          <input
-            type="text"
-            placeholder="Artist"
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
-          />
         </div>
         <div>
           <input

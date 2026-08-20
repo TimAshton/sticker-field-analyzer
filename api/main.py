@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import boto3
 from boto3.dynamodb.conditions import Key
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from mangum import Mangum
 
@@ -18,8 +19,20 @@ app = FastAPI(title="Sticker Field Analyzer API")
 # browsers reject even when the values match - so we deliberately don't
 # configure CORS at the application layer.
 
-# Initialize S3 client (Uses IAM credentials configured in your environment)
-s3_client = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-west-2"))
+# Initialize S3 client (Uses IAM credentials configured in your environment).
+# Force the regional endpoint + SigV4: boto3's default presigned-URL builder
+# uses the legacy global `s3.amazonaws.com` host regardless of region_name,
+# which makes S3 307-redirect every PUT to the regional endpoint. Desktop
+# browsers mostly follow that redirect fine, but mobile Safari's fetch fails
+# to resend a cross-origin PUT body after a redirect, surfacing as a generic
+# "Load failed" with no useful status code.
+AWS_REGION = os.getenv("AWS_REGION", "us-west-2")
+s3_client = boto3.client(
+    "s3",
+    region_name=AWS_REGION,
+    endpoint_url=f"https://s3.{AWS_REGION}.amazonaws.com",
+    config=Config(signature_version="s3v4"),
+)
 BUCKET_NAME = os.getenv("S3_BUCKET_NAME", "YOUR_TERRAFORM_COMPUTED_BUCKET_NAME")
 
 # DynamoDB table tracking image/sticker pipeline status (see dynamodb.tf).
