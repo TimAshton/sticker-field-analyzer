@@ -42,6 +42,7 @@ resource "aws_cloudfront_distribution" "cdn" {
   enabled             = true
   is_ipv6_enabled     = true
   default_root_object = "index.html"
+  aliases             = ["stickers.tashton.com"]
 
   origin {
     domain_name              = aws_s3_bucket.webapp.bucket_regional_domain_name
@@ -80,7 +81,9 @@ resource "aws_cloudfront_distribution" "cdn" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.stickers.certificate_arn
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 
@@ -137,8 +140,9 @@ resource "aws_s3_bucket_cors_configuration" "app_cors" {
     allowed_origins = [
       "http://localhost:3000",
       # FIX: Dynamically allows your deployed CloudFront URL to drop files into S3
-      "https://${aws_cloudfront_distribution.cdn.domain_name}"
-    ] 
+      "https://${aws_cloudfront_distribution.cdn.domain_name}",
+      "https://stickers.tashton.com"
+    ]
     expose_headers  = ["ETag"]
   }
 }

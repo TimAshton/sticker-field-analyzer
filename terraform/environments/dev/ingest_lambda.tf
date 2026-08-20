@@ -97,11 +97,24 @@ resource "aws_lambda_permission" "allow_s3_invoke_ingest" {
 }
 
 # IMPORTANT: S3 only supports ONE notification configuration per bucket.
-# When the detection Lambda is added later, its lambda_function block must
-# be added to THIS resource, not a separate aws_s3_bucket_notification -
-# a second one would silently overwrite this one instead of adding to it.
+# When another direct-S3-trigger Lambda is added later, its lambda_function
+# block must be added to THIS resource, not a separate
+# aws_s3_bucket_notification - a second one would silently overwrite this
+# one instead of adding to it.
+#
+# That said, a SECOND direct S3->Lambda trigger on the same (event, prefix)
+# as an existing one doesn't work at all: S3's PutBucketNotificationConfiguration
+# API rejects it outright ("Configuration is ambiguously defined... overlapping
+# prefixes... for the same event type"), even when the target Lambda differs -
+# this was hit adding the match Lambda (match_lambda.tf) here and had to be
+# reverted. To trigger a second/third consumer off the same upload event,
+# route through EventBridge instead (eventbridge = true below) and add an
+# aws_cloudwatch_event_rule + aws_cloudwatch_event_target per consumer, as
+# match_lambda.tf does. Both delivery mechanisms fire independently off the
+# same underlying S3 event, so consumers still don't call each other.
 resource "aws_s3_bucket_notification" "sticker_uploads" {
-  bucket = aws_s3_bucket.sticker_images.id
+  bucket      = aws_s3_bucket.sticker_images.id
+  eventbridge = true
 
   lambda_function {
     lambda_function_arn = aws_lambda_function.ingest.arn

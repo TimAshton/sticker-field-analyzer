@@ -15,6 +15,7 @@ display); the detection/matching step is still a local prototype (`app/`), not d
 - `api/` — FastAPI Lambda (`main.py`) that issues presigned S3 upload URLs and lists display-ready images. Deployed via Function URL (no API Gateway).
 - `ingest/` — S3-triggered Lambda (`main.py`) that creates a resized/EXIF-corrected display copy of each upload and extracts GPS from EXIF.
 - `app/` — standalone local prototype (YOLO + OWLv2 + CLIP + Qdrant) for detecting and die-cut-cropping individual stickers out of a field photo, and matching crops against a vector catalog. Not yet wired into the deployed pipeline or the DynamoDB schema — run it directly with `python app/src/main.py`, no lambda/terraform involved.
+- `embedding/` — deployed CLIP-embedding service (Docker-image Lambdas, unlike `api/`/`ingest/`'s zip Lambdas). Serves the known-sticker catalog's "Add Known" embedding step and the brute-force match-on-upload check. See `embedding/README.md` for the deploy bootstrap order.
 - `terraform/` — infra as code. `environments/dev` is the only environment actually built out (`prod`/`staging` are empty placeholders). `modules/app_infrastructure` currently only defines a bare VPC and isn't wired into `dev`.
 
 ## Commands
@@ -40,6 +41,13 @@ cd ingest && ./build_lambda.sh    # -> terraform/environments/dev/ingest_package
 ```
 Each script does a fresh `pip install --target build/ --platform manylinux2014_x86_64 --python-version 3.12 --only-binary=:all:` and zips `build/` + `main.py` — deliberately targeting Lambda's runtime, not the host platform, so don't replace this with a plain `pip install`.
 
+### Embedding service (`embedding/`)
+Docker-image Lambdas (`embed-known` and `match`) sharing one image — requires Docker running locally. Build + push before applying Terraform:
+```
+cd embedding && ./build_and_push.sh
+```
+Pushes under a content-addressed tag (git short SHA) and prints the `terraform apply -var="embedding_image_tag=..."` command to run next. **Pushing under an unchanged tag does not redeploy** — `image_uri` is what Terraform diffs, and container-image Lambdas have no `source_code_hash` equivalent, so re-pushing the same tag after a code change silently leaves the old code running. If you haven't committed since the last push, pass a manually distinguished tag (e.g. append `-fix1`) rather than relying on the git-SHA tag alone. First-ever deploy needs the bootstrap order in `embedding/README.md` (the ECR repo must exist before an image can be pushed to it, and the Lambdas can't be created before an image exists).
+
 ### Infra (`terraform/environments/dev`)
 ```
 terraform init
@@ -59,7 +67,17 @@ Rebuild the lambda zips first (above) — `source_code_hash` is computed from th
 3. That S3 write fires an `ObjectCreated` event that invokes the ingest Lambda, which EXIF-transposes, resizes (≤1600px), re-encodes as JPEG, extracts GPS if present, writes `display/<image_id>.jpg`, and flips the pipeline record to `status=display_ready`.
 4. Frontend's Sticker Book page (`GET /api/images`) queries DynamoDB's `status-index` GSI for `display_ready` items and gets back presigned GET URLs (1hr TTL) for each — the uploads bucket is private, nothing is ever public.
 
-Detection/cropping/matching (what `app/` prototypes) is the next pipeline stage but isn't hooked up yet — there's no Lambda, no S3 trigger, and no DynamoDB write path for `CROP#` items in the deployed code, even though the schema below already reserves space for it.
+Detection/cropping (what `app/` prototypes for splitting a field photo into individual stickers) is the next pipeline stage but isn't hooked up yet — there's no Lambda, no S3 trigger, and no DynamoDB write path for `CROP#` items in the deployed code, even though the schema below already reserves space for it.
+
+### Known-sticker catalog + match-on-upload logging
+A separate, deployed pipeline for building a reference catalog and flagging matches — see `embedding/` for the code and `known_stickers.tf`/`embed_known_lambda.tf`/`match_lambda.tf` for the infra.
+
+1. **Add Known**: the frontend's Add Known page → `POST /api/get-known-presigned-url` (same presign-Lambda as uploads, different bucket/table) → browser PUTs a single, pre-isolated reference sticker image to `known/<sticker_id>.<ext>` in a dedicated `known-stickers` bucket, plus a DynamoDB row (`status=pending_embedding`) in a dedicated, flat `known-stickers` table (PK `sticker_id` only — no SK/GSI, brute-force `Scan` was a deliberate choice over indexing since this catalog is manually built and stays small).
+2. That S3 write directly triggers the `embed-known` Lambda (a normal S3→Lambda notification, since it's the *only* consumer of that bucket's events), which computes a CLIP embedding and flips the row to `status=embedded`.
+3. Every regular `stickers/` upload *also* triggers the `match` Lambda (independently and in parallel with `ingest`, same as the two-consumers-per-event pattern above) — but via **EventBridge, not a direct S3 notification** (see the constraint below for why). `match` embeds the raw upload, brute-force cosine-compares it against every `embedded` known sticker, and if the best score clears `MATCH_SIMILARITY_THRESHOLD` (the one tunable env var on the `match` Lambda), logs a `PK=image_id, SK="MATCH#<sticker_id>"` item onto the *existing* pipeline table — nothing currently acts on a match, it's logging only.
+
+### Custom domain
+The web app is also reachable at `https://stickers.tashton.com` (Route 53 alias + ACM cert added to the *existing* CloudFront distribution in `domain.tf`/`provider.tf`). Deliberately a subdomain, not a path — DNS can't split traffic by path, and `tashton.com`'s root is owned by a separate repo (`tashton.com-aws`, a bare S3-website-hosted landing page with no CloudFront/HTTPS of its own). This project's Terraform only adds records inside the existing `tashton.com` Route 53 zone (via a `data` lookup); it never takes ownership of the zone or touches `tashton.com-aws`'s resources.
 
 ### DynamoDB single-table design (`sticker-field-analyzer-pipeline`)
 - PK `image_id`, SK `METADATA` — one item per upload. `status`: `uploaded → display_ready → extracted → enrichment_complete` (or `failed`).
@@ -73,7 +91,9 @@ Detection/cropping/matching (what `app/` prototypes) is the next pipeline stage 
 Each Lambda's S3 IAM policy is scoped to only the prefix(es) it needs — keep new stages similarly scoped rather than granting bucket-wide access.
 
 ### Constraints worth knowing before touching infra
-- **S3 supports only one bucket notification config.** `aws_s3_bucket_notification.sticker_uploads` in `ingest_lambda.tf` currently only wires up the ingest Lambda. A future detection Lambda's trigger must be added as another `lambda_function` block inside *that same resource*, not a second `aws_s3_bucket_notification` — a second one silently replaces the first instead of adding to it.
+- **S3 supports only one bucket notification config**, AND **it can't route the same `(event type, prefix)` to two different direct Lambda targets** — `PutBucketNotificationConfiguration` rejects that outright as "ambiguously defined," even though the targets differ. `aws_s3_bucket_notification.sticker_uploads` in `ingest_lambda.tf` wires up `ingest` directly; a second consumer of the same `stickers/` `ObjectCreated` events (like `match`) can't get its own `lambda_function` block there. The working pattern (see `match_lambda.tf`): set `eventbridge = true` on that same notification resource, then add an `aws_cloudwatch_event_rule` + `aws_cloudwatch_event_target` per additional consumer. Both delivery mechanisms still fire independently off the same underlying S3 event — the consumers still don't call each other. Note EventBridge's event shape is different from a direct S3 notification's (`event["detail"]["bucket"]["name"]` / `event["detail"]["object"]["key"]`, one event per invocation, key is *not* URL-encoded) — don't reuse `ingest`'s Records-loop parsing code for an EventBridge-triggered handler.
+- **Lambda's INIT phase has a hard, non-configurable ~10s timeout**, separate from the function's own `timeout` setting (which only covers the handler invocation). Loading a large model (e.g. CLIP via `sentence-transformers`) at module import time blows past that on cold start. Fix: do the heavy import + construction lazily, inside the handler's first call (behind a module-level cache so warm invocations still reuse it) — see `embedding/common.py`'s `_get_model()`. Even lazy-loaded, also set `HF_HUB_OFFLINE=1` / `TRANSFORMERS_OFFLINE=1` on any Lambda using `sentence-transformers` — without them, `huggingface_hub` tries a network round-trip to check for model updates before falling back to the image-baked cache, which was observed adding enough latency to blow through even a 60s function timeout.
 - **CORS is handled entirely at the Lambda Function URL layer** (`cors {}` block in `lambda.tf`), not in FastAPI. Adding `CORSMiddleware` in `api/main.py` would produce duplicate `Access-Control-Allow-Origin` headers, which browsers reject even when the values match.
-- The ingest Lambda and the (future) detection Lambda both react to the same S3 upload event independently and in parallel — they don't call each other or depend on each other's output.
+- The ingest Lambda and the match/detection Lambdas all react to the same S3 upload event independently and in parallel — they don't call each other or depend on each other's output.
+- **CloudFront custom-domain certs must be requested in `us-east-1`**, regardless of the distribution's own region — this is why `provider.tf` has a second, aliased `aws.us_east_1` provider block used only by `domain.tf`'s `aws_acm_certificate`/`aws_acm_certificate_validation`.
 - `web-app/.env` and the built lambda zips are gitignored. Terraform state is remote (S3 backend with native S3 locking, `backend.tf`), so the tracked `*.tfstate*` files under `environments/dev/` (also gitignored) are stale local artifacts, not the source of truth.

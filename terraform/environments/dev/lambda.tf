@@ -75,6 +75,45 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
   })
 }
 
+# Scoped to the known-stickers bucket's known/ prefix only - this Lambda's
+# /api/get-known-presigned-url route writes reference images there. Same
+# "only the create step" convention as presign_api_s3/presign_api_dynamodb
+# below: no delete/list, no read access to other prefixes.
+resource "aws_iam_role_policy" "presign_api_known_s3" {
+  name = "presign-api-known-s3-access"
+  role = aws_iam_role.presign_api_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject"]
+        Resource = "${aws_s3_bucket.known_stickers.arn}/known/*"
+      }
+    ]
+  })
+}
+
+# Only PutItem - this Lambda creates the initial known-sticker catalog
+# record, it never reads or updates existing items (the embed-known Lambda
+# owns those writes once the reference image lands in S3).
+resource "aws_iam_role_policy" "presign_api_known_dynamodb" {
+  name = "presign-api-known-dynamodb-access"
+  role = aws_iam_role.presign_api_lambda.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.known_stickers.arn
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "presign_api" {
   function_name = "sticker-field-analyzer-presign-api"
   role          = aws_iam_role.presign_api_lambda.arn
@@ -88,9 +127,11 @@ resource "aws_lambda_function" "presign_api" {
 
   environment {
     variables = {
-      S3_BUCKET_NAME     = aws_s3_bucket.sticker_images.id
-      ALLOWED_ORIGIN     = "https://${aws_cloudfront_distribution.cdn.domain_name}"
-      DYNAMODB_TABLE_NAME = aws_dynamodb_table.sticker_pipeline.name
+      S3_BUCKET_NAME             = aws_s3_bucket.sticker_images.id
+      ALLOWED_ORIGIN             = "https://${aws_cloudfront_distribution.cdn.domain_name}"
+      DYNAMODB_TABLE_NAME        = aws_dynamodb_table.sticker_pipeline.name
+      KNOWN_STICKERS_BUCKET_NAME = aws_s3_bucket.known_stickers.id
+      KNOWN_STICKERS_TABLE_NAME  = aws_dynamodb_table.known_stickers.name
     }
   }
 }
@@ -102,7 +143,11 @@ resource "aws_lambda_function_url" "presign_api" {
   authorization_type = "NONE"
 
   cors {
-    allow_origins     = ["http://localhost:3000", "https://${aws_cloudfront_distribution.cdn.domain_name}"]
+    allow_origins = [
+      "http://localhost:3000",
+      "https://${aws_cloudfront_distribution.cdn.domain_name}",
+      "https://stickers.tashton.com",
+    ]
     allow_methods     = ["POST", "GET"]
     allow_headers     = ["content-type"]
     allow_credentials = false

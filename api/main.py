@@ -29,6 +29,13 @@ dynamodb = boto3.resource("dynamodb", region_name=os.getenv("AWS_REGION", "us-we
 TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "YOUR_TERRAFORM_COMPUTED_TABLE_NAME")
 pipeline_table = dynamodb.Table(TABLE_NAME)
 
+# Known-sticker reference catalog (see known_stickers.tf) - separate bucket
+# and table from the pipeline above, since these are manually-added,
+# already-isolated reference images rather than field-photo uploads.
+KNOWN_BUCKET_NAME = os.getenv("KNOWN_STICKERS_BUCKET_NAME", "YOUR_TERRAFORM_COMPUTED_BUCKET_NAME")
+KNOWN_TABLE_NAME = os.getenv("KNOWN_STICKERS_TABLE_NAME", "YOUR_TERRAFORM_COMPUTED_TABLE_NAME")
+known_stickers_table = dynamodb.Table(KNOWN_TABLE_NAME)
+
 # Allowed image mime-types for the sticker field analyzer app
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
@@ -50,9 +57,33 @@ class ImageListItem(BaseModel):
 class ImageListResponse(BaseModel):
     images: list[ImageListItem]
 
+class KnownStickerPresignedUrlRequest(BaseModel):
+    client_filename: str = Field(..., description="Original name of the file")
+    content_type: str = Field(..., description="The mime-type of the image")
+    artist: str = Field(..., min_length=1, description="Artist/creator of the sticker design")
+    design_name: str = Field(..., min_length=1, description="Name of the sticker design")
+
+class KnownStickerPresignedUrlResponse(BaseModel):
+    upload_url: str
+    object_key: str
+    sticker_id: str
+
+def _presign_put(bucket: str, key: str, content_type: str) -> str:
+    # Shared by both presign endpoints below - request a short-lived PUT URL
+    # from S3 (expires in 5 minutes).
+    return s3_client.generate_presigned_url(
+        ClientMethod="put_object",
+        Params={
+            "Bucket": bucket,
+            "Key": key,
+            "ContentType": content_type,
+        },
+        ExpiresIn=300, # 5 minutes execution window
+    )
+
 @app.post(
-    "/api/get-presigned-url", 
-    response_model=PresignedUrlResponse, 
+    "/api/get-presigned-url",
+    response_model=PresignedUrlResponse,
     status_code=status.HTTP_201_CREATED
 )
 async def generate_presigned_url(payload: PresignedUrlRequest):
@@ -72,16 +103,8 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
     unique_key = f"stickers/{image_id}.{file_extension}"
 
     try:
-        # 3. Request a short-lived PUT URL from S3 (expires in 5 minutes)
-        url = s3_client.generate_presigned_url(
-            ClientMethod="put_object",
-            Params={
-                "Bucket": BUCKET_NAME,
-                "Key": unique_key,
-                "ContentType": payload.content_type,
-            },
-            ExpiresIn=300, # 5 minutes execution window
-        )
+        # 3. Request a short-lived PUT URL from S3
+        url = _presign_put(BUCKET_NAME, unique_key, payload.content_type)
 
         # 4. Write the initial pipeline record. status="uploaded" means the
         # client has a URL but hasn't necessarily PUT the file to S3 yet -
@@ -100,6 +123,58 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
         )
 
         return PresignedUrlResponse(upload_url=url, object_key=unique_key, image_id=image_id)
+
+    except ClientError as e:
+        # Avoid leaking internal AWS metadata; log it internally and send a generic 500
+        print(f"AWS ClientError: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate upload credentials. Please try again."
+        )
+
+
+@app.post(
+    "/api/get-known-presigned-url",
+    response_model=KnownStickerPresignedUrlResponse,
+    status_code=status.HTTP_201_CREATED
+)
+async def generate_known_sticker_presigned_url(payload: KnownStickerPresignedUrlRequest):
+    # 1. Enforce strict content-type validation on the server side
+    if payload.content_type not in ALLOWED_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_TYPES)}"
+        )
+
+    # 2. Sanitize and generate a unique file name using a UUID4 hash string.
+    # This same id doubles as the DynamoDB partition key for this catalog
+    # entry, so the S3 key and the catalog record are always linked.
+    sticker_id = str(uuid.uuid4())
+    file_extension = payload.client_filename.split(".")[-1].lower()
+    unique_key = f"known/{sticker_id}.{file_extension}"
+
+    try:
+        # 3. Request a short-lived PUT URL from S3
+        url = _presign_put(KNOWN_BUCKET_NAME, unique_key, payload.content_type)
+
+        # 4. Write the initial catalog record. status="pending_embedding"
+        # means the client has a URL but hasn't necessarily PUT the file to
+        # S3 yet - the embed-known Lambda (triggered by the actual S3
+        # upload event) moves this to embedded / failed.
+        now = datetime.now(timezone.utc).isoformat()
+        known_stickers_table.put_item(
+            Item={
+                "sticker_id": sticker_id,
+                "artist": payload.artist,
+                "design_name": payload.design_name,
+                "image_key": unique_key,
+                "status": "pending_embedding",
+                "created_at": now,
+                "updated_at": now,
+            }
+        )
+
+        return KnownStickerPresignedUrlResponse(upload_url=url, object_key=unique_key, sticker_id=sticker_id)
 
     except ClientError as e:
         # Avoid leaking internal AWS metadata; log it internally and send a generic 500
