@@ -70,6 +70,17 @@ class ImageListItem(BaseModel):
 class ImageListResponse(BaseModel):
     images: list[ImageListItem]
 
+class KnownStickerListItem(BaseModel):
+    sticker_id: str
+    artist: str
+    design_name: str
+    status: str
+    image_url: str
+    created_at: str
+
+class KnownStickerListResponse(BaseModel):
+    known_stickers: list[KnownStickerListItem]
+
 class KnownStickerPresignedUrlRequest(BaseModel):
     client_filename: str = Field(..., description="Original name of the file")
     content_type: str = Field(..., description="The mime-type of the image")
@@ -247,6 +258,62 @@ async def list_images():
         )
 
     return ImageListResponse(images=images)
+
+
+@app.get(
+    "/api/known-stickers",
+    response_model=KnownStickerListResponse,
+)
+async def list_known_stickers():
+    # No status-index GSI on this table (see known_stickers.tf) - it's a
+    # flat, manually-built catalog, so brute-force Scan is the deliberate
+    # choice here too, same as embedding/match.py's _scan_embedded_known_stickers.
+    # Unlike /api/images, this returns every status (not just a "ready"
+    # one) - browsing your own reference catalog benefits from seeing
+    # pending/failed entries too, not just fully embedded ones.
+    try:
+        items = []
+        scan_kwargs = {}
+        while True:
+            result = known_stickers_table.scan(**scan_kwargs)
+            items.extend(result.get("Items", []))
+            if "LastEvaluatedKey" not in result:
+                break
+            scan_kwargs["ExclusiveStartKey"] = result["LastEvaluatedKey"]
+    except ClientError as e:
+        print(f"AWS ClientError: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load known stickers. Please try again."
+        )
+
+    known_stickers = []
+    for item in items:
+        image_key = item.get("image_key")
+        if not image_key:
+            continue
+
+        # Same private-bucket + short-lived signed URL pattern as
+        # /api/images - the known-stickers bucket is private too.
+        view_url = s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": KNOWN_BUCKET_NAME, "Key": image_key},
+            ExpiresIn=3600,
+        )
+
+        known_stickers.append(
+            KnownStickerListItem(
+                sticker_id=item["sticker_id"],
+                artist=item.get("artist", ""),
+                design_name=item.get("design_name", ""),
+                status=item.get("status", ""),
+                image_url=view_url,
+                created_at=item.get("created_at", ""),
+            )
+        )
+
+    known_stickers.sort(key=lambda s: s.created_at, reverse=True)
+    return KnownStickerListResponse(known_stickers=known_stickers)
 
 
 # Lambda entrypoint - Mangum adapts the ASGI app to the API Gateway/Function URL

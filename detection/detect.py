@@ -11,13 +11,26 @@ dynamodb = boto3.resource("dynamodb", region_name=os.getenv("AWS_REGION", "us-we
 PIPELINE_TABLE_NAME = os.getenv("DYNAMODB_TABLE_NAME", "YOUR_TERRAFORM_COMPUTED_TABLE_NAME")
 pipeline_table = dynamodb.Table(PIPELINE_TABLE_NAME)
 
-# Zero-shot detection prompt, confidence threshold, and crop padding carried
-# over unchanged from the app/ prototype (app/src/main.py's scan_street_wall)
-# - retuning detection quality itself is separate work from wiring the stage
-# up.
+# Zero-shot detection prompt/threshold/padding, tuned against a real
+# multi-sticker field photo (a laptop lid with ~19 stickers). Score alone
+# doesn't cleanly separate good boxes from bad ones - e.g. a correct
+# 551x447 single-sticker box scored 0.376 while a bad 1329x1030 box
+# spanning three unrelated stickers scored 0.343, right next to it. But
+# box *area as a fraction of the image* showed a sharp, natural gap: every
+# legitimate single-sticker box on that test photo fell under ~8.5% of the
+# image area, and every box that had merged multiple stickers together
+# jumped straight to 11%-31%. MAX_BOX_AREA_FRACTION exploits that gap
+# instead of trying to separate them by score. DETECTION_THRESHOLD nudged
+# up slightly to drop the single weakest, noisiest box in that test run;
+# CROP_PADDING brought down since generous padding on a densely-packed
+# photo pulls neighboring stickers' edges into the contour-refinement step
+# below, which is also what caused a die-cut crop to end up truncated to
+# half a sticker in testing (the largest contour found inside the padded
+# region wasn't the target sticker's own outline).
 DETECTION_TEXTS = [["a street sticker", "a label", "a vinyl decal"]]
-DETECTION_THRESHOLD = 0.15
-CROP_PADDING = 35
+DETECTION_THRESHOLD = 0.18
+CROP_PADDING = 15
+MAX_BOX_AREA_FRACTION = 0.10
 
 # Imported and constructed lazily on first use, not at module scope - see
 # embedding/common.py's _get_model() for why (Lambda's ~10s INIT-phase
@@ -120,10 +133,18 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
     )
     boxes = results[0]["boxes"]
     scores = results[0]["scores"]
+    image_area = image_cv.shape[0] * image_cv.shape[1]
 
     crops = []
     for box, score in zip(boxes, scores):
         x1, y1, x2, y2 = map(int, box.tolist())
+
+        # Reject boxes that have merged multiple stickers together - see
+        # MAX_BOX_AREA_FRACTION's comment above for why this is a more
+        # reliable signal than the score for catching these.
+        box_area_fraction = ((x2 - x1) * (y2 - y1)) / image_area
+        if box_area_fraction > MAX_BOX_AREA_FRACTION:
+            continue
 
         # Buffer the box safely so we don't truncate a jagged tail edge
         y1_pad = max(0, y1 - CROP_PADDING)

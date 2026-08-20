@@ -75,10 +75,12 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
   })
 }
 
-# Scoped to the known-stickers bucket's known/ prefix only - this Lambda's
-# /api/get-known-presigned-url route writes reference images there. Same
-# "only the create step" convention as presign_api_s3/presign_api_dynamodb
-# below: no delete/list, no read access to other prefixes.
+# Scoped to the known-stickers bucket's known/ prefix only. PutObject backs
+# /api/get-known-presigned-url's write step; GetObject backs GET
+# /api/known-stickers' presigned view URLs - same note as presign_api_s3
+# above, this permission is required for the *presigned URL itself* to
+# work when a browser later uses it, not just for generating it. No
+# delete/list.
 resource "aws_iam_role_policy" "presign_api_known_s3" {
   name = "presign-api-known-s3-access"
   role = aws_iam_role.presign_api_lambda.id
@@ -90,14 +92,22 @@ resource "aws_iam_role_policy" "presign_api_known_s3" {
         Effect   = "Allow"
         Action   = ["s3:PutObject"]
         Resource = "${aws_s3_bucket.known_stickers.arn}/known/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.known_stickers.arn}/known/*"
       }
     ]
   })
 }
 
-# Only PutItem - this Lambda creates the initial known-sticker catalog
-# record, it never reads or updates existing items (the embed-known Lambda
-# owns those writes once the reference image lands in S3).
+# PutItem creates the initial known-sticker catalog record
+# (/api/get-known-presigned-url) - this Lambda never updates existing items
+# (the embed-known Lambda owns those writes once the reference image lands
+# in S3). Scan backs GET /api/known-stickers' catalog listing - same
+# brute-force-Scan choice known_stickers.tf documents for this table (no
+# GSI, small manually-built catalog).
 resource "aws_iam_role_policy" "presign_api_known_dynamodb" {
   name = "presign-api-known-dynamodb-access"
   role = aws_iam_role.presign_api_lambda.id
@@ -108,6 +118,11 @@ resource "aws_iam_role_policy" "presign_api_known_dynamodb" {
       {
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.known_stickers.arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan"]
         Resource = aws_dynamodb_table.known_stickers.arn
       }
     ]
