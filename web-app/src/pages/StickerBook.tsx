@@ -84,12 +84,28 @@ function StickerBook() {
               key={sticker.id}
               onClick={() => setSelected(sticker)}
               style={{
+                position: 'relative',
                 padding: 0, cursor: 'pointer', lineHeight: 0,
                 border: '3px solid #FF9C00', borderRadius: '8px',
                 background: 'none', overflow: 'hidden',
               }}
             >
               <img src={sticker.imageUrl} alt="Sticker" style={{ width: '100%', display: 'block' }} />
+              {sticker.matches.length > 0 && (
+                <span
+                  title={`${sticker.matches.length} known-sticker match${sticker.matches.length === 1 ? '' : 'es'}`}
+                  style={{
+                    position: 'absolute', top: '6px', right: '6px',
+                    background: '#FF9C00', color: '#000',
+                    borderRadius: '999px', minWidth: '1.5rem', height: '1.5rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.85rem', fontWeight: 'bold', lineHeight: 1,
+                    padding: '0 0.35rem', boxShadow: '0 1px 3px rgba(0,0,0,0.6)',
+                  }}
+                >
+                  {sticker.matches.length}
+                </span>
+              )}
             </button>
           ))}
         </div>
