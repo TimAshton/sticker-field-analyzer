@@ -7,10 +7,11 @@
 #     display_key: S3 key of the viewable copy (set by the ingest Lambda)
 #
 #   PK (image_id) + SK "CROP#<crop_id>" -> one item per extracted sticker
+#     (written by the detect Lambda, see detect_lambda.tf/detection/detect.py)
 #     status: pending | enriched | failed
 #     crop_key: S3 key of the cropped sticker image
-#     bbox: bounding box from YOLO detection
-#     info: enrichment result once the search step completes
+#     bbox: bounding box from OWLv2 detection
+#     info: enrichment result once the (not-yet-built) per-crop matching step completes
 #
 #   PK (image_id) + SK "MATCH#<matched_sticker_id>" -> logged match against
 #     the known-sticker catalog (see known_stickers.tf, embedding/match.py).
