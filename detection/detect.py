@@ -20,7 +20,14 @@ pipeline_table = dynamodb.Table(PIPELINE_TABLE_NAME)
 # legitimate single-sticker box on that test photo fell under ~8.5% of the
 # image area, and every box that had merged multiple stickers together
 # jumped straight to 11%-31%. MAX_BOX_AREA_FRACTION exploits that gap
-# instead of trying to separate them by score. DETECTION_THRESHOLD nudged
+# instead of trying to separate them by score - but only when detect_and_crop
+# finds more than one box in the image: a merge is, by definition, a box
+# that swallowed other stickers OWLv2 also detected nearby, so the signal
+# only means anything relative to sibling boxes. A lone sticker photographed
+# by itself (no field around it) legitimately fills most of the frame and
+# is the single detection in the image - rejecting that on area alone would
+# throw out the exact "player finds one sticker in the wild" case this
+# catalog exists to support. DETECTION_THRESHOLD nudged
 # up slightly to drop the single weakest, noisiest box in that test run;
 # CROP_PADDING brought down since generous padding on a densely-packed
 # photo pulls neighboring stickers' edges into the contour-refinement step
@@ -141,9 +148,11 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
 
         # Reject boxes that have merged multiple stickers together - see
         # MAX_BOX_AREA_FRACTION's comment above for why this is a more
-        # reliable signal than the score for catching these.
+        # reliable signal than the score for catching these. Only applies
+        # when there's more than one box in the frame - a lone detection is
+        # never a "merge", however much of the image it covers.
         box_area_fraction = ((x2 - x1) * (y2 - y1)) / image_area
-        if box_area_fraction > MAX_BOX_AREA_FRACTION:
+        if len(boxes) > 1 and box_area_fraction > MAX_BOX_AREA_FRACTION:
             continue
 
         # Buffer the box safely so we don't truncate a jagged tail edge
