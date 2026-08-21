@@ -7,24 +7,28 @@ import AdminStickerBook from './pages/AdminStickerBook'
 import AdminLayout from './components/AdminLayout'
 import { UploadIcon, BookIcon, PlusIcon, FolderIcon, MagnifierIcon } from './components/NavIcons'
 
-// One nav, not two - the admin links only join it while inside /admin/*,
-// rather than rendering a second stacked nav bar there.
+// One nav, showing only the links relevant to the current section - the
+// public links (Upload, Sticker Book) and admin links (Add Known, Refs,
+// QA Sticker Book) never show together.
 function Nav() {
   const { pathname } = useLocation()
   const isAdmin = pathname.startsWith('/admin')
+
+  if (isAdmin) {
+    return (
+      <nav>
+        {/* /admin/* isn't access-controlled yet - add auth before this is public */}
+        <Link to="/admin/add-known" title="Add Known" aria-label="Add Known"><PlusIcon /></Link>
+        <Link to="/admin/refs" title="Refs" aria-label="Refs"><FolderIcon /></Link>
+        <Link to="/admin/sticker-book" title="QA Sticker Book" aria-label="QA Sticker Book"><MagnifierIcon /></Link>
+      </nav>
+    )
+  }
 
   return (
     <nav>
       <Link to="/upload" title="Upload" aria-label="Upload"><UploadIcon /></Link>
       <Link to="/sticker-book" title="Sticker Book" aria-label="Sticker Book"><BookIcon /></Link>
-      {isAdmin && (
-        <>
-          {/* /admin/* isn't access-controlled yet - add auth before this is public */}
-          <Link to="/admin/add-known" title="Add Known" aria-label="Add Known"><PlusIcon /></Link>
-          <Link to="/admin/refs" title="Refs" aria-label="Refs"><FolderIcon /></Link>
-          <Link to="/admin/sticker-book" title="QA Sticker Book" aria-label="QA Sticker Book"><MagnifierIcon /></Link>
-        </>
-      )}
     </nav>
   )
 }
