@@ -65,7 +65,7 @@ function Upload() {
   }
 
   return (
-    <div>
+    <div className="page">
       <h1>Upload</h1>
       <form onSubmit={handleSubmit}>
         <input type="file" accept="image/*" onChange={handleFileChange} />

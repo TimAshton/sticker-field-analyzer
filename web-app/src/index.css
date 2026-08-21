@@ -32,12 +32,14 @@ nav {
   display: flex;
   align-items: center;
   gap: 0;
+  width: 100%;
   padding: 0 !important;
   background: var(--lcars-black);
 }
 
 nav a {
   display: inline-flex;
+  flex: 1;
   align-items: center;
   justify-content: center;
   color: var(--lcars-black);
@@ -65,8 +67,11 @@ nav a:last-child {
   padding-right: 2.2rem;
 }
 
-/* Page content area */
-main, div > div {
+/* Page content area - a named class rather than a structural selector like
+   `div > div`, which used to also match nested divs inside a page (e.g.
+   Sticker Book's grid container), doubling up the padding and eating into
+   the grid's usable width. */
+.page {
   padding: 2rem;
 }
 

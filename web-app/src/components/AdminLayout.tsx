@@ -1,19 +1,11 @@
-import { Link, Outlet } from 'react-router-dom'
-import { PlusIcon, FolderIcon } from './NavIcons'
+import { Outlet } from 'react-router-dom'
 
-// Local nav for the /admin/* section - not access-controlled yet, add auth
-// before this is public. Kept separate from the public nav in App.tsx so
-// admin-only pages don't show up there.
+// Pure route composition for /admin/* - the nav itself lives in App.tsx's
+// Nav component (it adds the admin links to the single shared nav while
+// pathname starts with /admin), not here. Kept as its own layout route so
+// an auth check has an obvious place to go later.
 function AdminLayout() {
-  return (
-    <div>
-      <nav>
-        <Link to="/admin/add-known" title="Add Known" aria-label="Add Known"><PlusIcon /></Link>
-        <Link to="/admin/refs" title="Refs" aria-label="Refs"><FolderIcon /></Link>
-      </nav>
-      <Outlet />
-    </div>
-  )
+  return <Outlet />
 }
 
 export default AdminLayout

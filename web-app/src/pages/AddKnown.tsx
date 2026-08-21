@@ -70,7 +70,7 @@ function AddKnown() {
     !file || !artist.trim() || !designName.trim() || status === 'requesting' || status === 'uploading'
 
   return (
-    <div>
+    <div className="page">
       <h1>Add Known</h1>
       <form onSubmit={handleSubmit}>
         <div>
