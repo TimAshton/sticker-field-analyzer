@@ -37,11 +37,11 @@ nav {
 }
 
 nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--lcars-black);
   text-decoration: none;
-  text-transform: uppercase;
-  font-weight: 700;
-  font-size: 1.1rem;
   padding: 0.9rem 1.6rem;
   background: var(--lcars-orange);
   transition: background 0.15s ease;
