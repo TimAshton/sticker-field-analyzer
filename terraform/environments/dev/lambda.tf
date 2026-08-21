@@ -174,7 +174,7 @@ resource "aws_lambda_function_url" "presign_api" {
       "https://${aws_cloudfront_distribution.cdn.domain_name}",
       "https://stickers.tashton.com",
     ]
-    allow_methods     = ["POST", "GET"]
+    allow_methods     = ["POST", "GET", "DELETE"]
     allow_headers     = ["content-type"]
     allow_credentials = false
     max_age           = 300
