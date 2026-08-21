@@ -58,6 +58,10 @@ resource "aws_iam_role_policy" "presign_api_s3" {
 # Query on the base table backs that same route's per-image MATCH# lookup
 # (Key(image_id) & sk begins_with "MATCH#") so the frontend can show
 # whether an upload matched anything in the known-sticker catalog.
+# DeleteItem backs the admin-only DELETE /api/images/{image_id} QA action -
+# it removes an upload's DynamoDB records (never the S3 image itself, see
+# api/main.py's delete_image) so it drops out of Sticker Book/the admin QA
+# view.
 resource "aws_iam_role_policy" "presign_api_dynamodb" {
   name = "presign-api-dynamodb-access"
   role = aws_iam_role.presign_api_lambda.id
@@ -67,7 +71,7 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
     Statement = [
       {
         Effect   = "Allow"
-        Action   = ["dynamodb:PutItem"]
+        Action   = ["dynamodb:PutItem", "dynamodb:DeleteItem"]
         Resource = aws_dynamodb_table.sticker_pipeline.arn
       },
       {

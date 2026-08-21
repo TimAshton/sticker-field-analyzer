@@ -292,6 +292,30 @@ def _get_matches(image_id: str) -> list[MatchItem]:
     ]
 
 
+@app.delete(
+    "/api/images/{image_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_image(image_id: str):
+    # Admin-only QA action (no auth on this route yet - see web-app's
+    # /admin routes). Deletes every DynamoDB record for this upload
+    # (METADATA plus any CROP#/MATCH# children) so it drops out of both
+    # Sticker Book and the admin QA view - but never touches S3, the
+    # actual image files are deliberately left in place.
+    try:
+        result = pipeline_table.query(
+            KeyConditionExpression=Key("image_id").eq(image_id),
+        )
+        for item in result.get("Items", []):
+            pipeline_table.delete_item(Key={"image_id": image_id, "sk": item["sk"]})
+    except ClientError as e:
+        print(f"AWS ClientError deleting {image_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete image record. Please try again."
+        )
+
+
 @app.get(
     "/api/known-stickers",
     response_model=KnownStickerListResponse,
