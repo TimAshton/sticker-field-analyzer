@@ -72,7 +72,6 @@ function StickerBook() {
 
   return (
     <div className="page" style={{ width: '100%' }}>
-      <h1>Sticker Book</h1>
       {loading && <p>Loading stickers...</p>}
       {errorMessage && <p style={{ color: 'red' }}>Error: {errorMessage}</p>}
       {!loading && !errorMessage && stickers.length === 0 ? (

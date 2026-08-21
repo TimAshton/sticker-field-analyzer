@@ -66,7 +66,6 @@ function Upload() {
 
   return (
     <div className="page">
-      <h1>Upload</h1>
       <form onSubmit={handleSubmit}>
         <input type="file" accept="image/*" onChange={handleFileChange} />
         <button type="submit" disabled={!file || status === 'requesting' || status === 'uploading'}>

@@ -59,7 +59,6 @@ function Refs() {
 
   return (
     <div className="page" style={{ width: '100%' }}>
-      <h1>Refs</h1>
       {loading && <p>Loading known stickers...</p>}
       {errorMessage && <p style={{ color: 'red' }}>Error: {errorMessage}</p>}
       {!loading && !errorMessage && knownStickers.length === 0 ? (

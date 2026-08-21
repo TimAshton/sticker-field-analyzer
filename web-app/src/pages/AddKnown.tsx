@@ -71,7 +71,6 @@ function AddKnown() {
 
   return (
     <div className="page">
-      <h1>Add Known</h1>
       <form onSubmit={handleSubmit}>
         <div>
           <input type="file" accept="image/*" onChange={handleFileChange} />
