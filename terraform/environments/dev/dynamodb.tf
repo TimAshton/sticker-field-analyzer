@@ -11,14 +11,19 @@
 #     status: pending | enriched | failed
 #     crop_key: S3 key of the cropped sticker image
 #     bbox: bounding box from OWLv2 detection
-#     info: enrichment result once the (not-yet-built) per-crop matching step completes
+#     info: enrichment result once a per-crop enrichment step beyond
+#     matching (e.g. a UI surfacing per-crop match state) gets built
 #
 #   PK (image_id) + SK "MATCH#<matched_sticker_id>" -> logged match against
-#     the known-sticker catalog (see known_stickers.tf, embedding/match.py).
-#     No "status" attribute is set on these items, keeping them out of
-#     status-index (sparse, reserved for METADATA's status vocabulary).
-#     similarity: Decimal cosine score. match_threshold: Decimal, the
-#     threshold in effect when this was logged. matched_at: ISO8601.
+#     the known-sticker catalog, one per (image, matched known sticker) pair
+#     (see known_stickers.tf, embedding/match.py - triggered off each crop
+#     detect produces, not the whole field photo, so a single image can
+#     legitimately produce multiple MATCH# items if different crops match
+#     different known stickers). No "status" attribute is set on these
+#     items, keeping them out of status-index (sparse, reserved for
+#     METADATA's status vocabulary). similarity: Decimal cosine score.
+#     match_threshold: Decimal, the threshold in effect when this was
+#     logged. crop_id: which CROP# produced this match. matched_at: ISO8601.
 #
 # Query(image_id = X) returns the source image plus all its crops and any
 # logged matches in one call. The status-index GSI supports "find everything
