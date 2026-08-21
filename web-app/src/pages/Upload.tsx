@@ -66,6 +66,8 @@ function Upload() {
 
   return (
     <div className="page">
+      <p className="tagline">Capture stickers.</p>
+
       <form onSubmit={handleSubmit}>
         <input type="file" accept="image/*" onChange={handleFileChange} />
         <button type="submit" disabled={!file || status === 'requesting' || status === 'uploading'}>

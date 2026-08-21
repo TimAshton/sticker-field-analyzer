@@ -107,3 +107,11 @@ input[type="file"] {
 .sticker-card {
   border: 1px solid var(--lcars-orange)
 }
+
+.tagline {
+  font-size: 1.4rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 0 0 1.25rem;
+}
