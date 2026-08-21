@@ -8,19 +8,20 @@ function App() {
   return (
     <BrowserRouter>
       <div>
-        <nav style={{ display: 'flex', gap: '1rem', padding: '1rem' }}>
-          <Link to="/upload">Upload</Link>
-          <Link to="/sticker-book">Sticker Book</Link>
-          <Link to="/add-known">Add Known</Link>
-          <Link to="/refs">Refs</Link>
+        <nav style={{ display: 'flex', gap: '1rem', padding: '1rem', fontSize: '1.5rem' }}>
+          <Link to="/upload" title="Upload" aria-label="Upload">📤</Link>
+          <Link to="/sticker-book" title="Sticker Book" aria-label="Sticker Book">📖</Link>
+          {/* /admin/* routes aren't access-controlled yet - add auth before this is public */}
+          <Link to="/admin/add-known" title="Add Known" aria-label="Add Known">➕</Link>
+          <Link to="/admin/refs" title="Refs" aria-label="Refs">🗂️</Link>
         </nav>
 
         <Routes>
           <Route path="/" element={<Navigate to="/sticker-book" replace />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/sticker-book" element={<StickerBook />} />
-          <Route path="/add-known" element={<AddKnown />} />
-          <Route path="/refs" element={<Refs />} />
+          <Route path="/admin/add-known" element={<AddKnown />} />
+          <Route path="/admin/refs" element={<Refs />} />
         </Routes>
       </div>
     </BrowserRouter>
