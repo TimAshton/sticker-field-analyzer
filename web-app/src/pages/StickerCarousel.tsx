@@ -99,9 +99,7 @@ function StickerCarousel() {
       onNext={() => goTo(index + 1)}
       closeTo="/sticker-book"
     >
-      <p>Status: {sticker.status}</p>
       <p>Uploaded: {formattedDate(sticker.createdAt)}</p>
-      <p>ID: {sticker.id}</p>
       {sticker.matches.length > 0 && (
         <div>
           <p>Matched known stickers:</p>
