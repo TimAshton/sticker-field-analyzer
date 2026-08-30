@@ -115,7 +115,7 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
     import cv2
     import numpy as np
     import torch
-    from PIL import Image
+    from PIL import Image, ImageOps
 
     # PyTorch defaults its thread pool to the underlying host's core count,
     # not this Lambda's throttled CPU allocation - in a constrained
@@ -126,9 +126,15 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
 
     processor, model = _get_owl()
 
-    image_array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image_cv = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-    image_pil = Image.open(BytesIO(image_bytes)).convert("RGB")
+    # Apply EXIF orientation before anything else. ingest/main.py's display
+    # copy (what the frontend actually renders) is EXIF-transposed too, and
+    # the bbox this function stores needs to line up with that same
+    # orientation or a match overlay drawn on the display copy would land
+    # in the wrong place on a photo with EXIF rotation. cv2.imdecode ignores
+    # EXIF entirely, so derive image_cv from the already-corrected PIL image
+    # instead of decoding image_bytes a second, uncorrected way.
+    image_pil = ImageOps.exif_transpose(Image.open(BytesIO(image_bytes)).convert("RGB"))
+    image_cv = cv2.cvtColor(np.array(image_pil), cv2.COLOR_RGB2BGR)
 
     inputs = processor(text=DETECTION_TEXTS, images=image_pil, return_tensors="pt")
     with torch.no_grad():
@@ -140,7 +146,8 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
     )
     boxes = results[0]["boxes"]
     scores = results[0]["scores"]
-    image_area = image_cv.shape[0] * image_cv.shape[1]
+    image_height, image_width = image_cv.shape[:2]
+    image_area = image_height * image_width
 
     crops = []
     for box, score in zip(boxes, scores):
@@ -188,9 +195,20 @@ def detect_and_crop(image_bytes: bytes) -> list[dict]:
         if not ok:
             continue
 
+        # Stored as fractions of the (EXIF-corrected) full photo, not raw
+        # pixels - the display copy the frontend overlays this onto is a
+        # different, resized copy of the same photo, and a fraction is the
+        # only representation that lines up with both. This is the original
+        # OWLv2 box (pre-padding, pre-contour-refinement), so it's an
+        # approximation of the saved crop's extent, not an exact match.
         crops.append({
             "crop_bytes": encoded.tobytes(),
-            "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+            "bbox": {
+                "x1": x1 / image_width,
+                "y1": y1 / image_height,
+                "x2": x2 / image_width,
+                "y2": y2 / image_height,
+            },
             "score": float(score),
         })
 
@@ -214,11 +232,15 @@ def _store_crop(bucket: str, image_id: str, crop_id: int, crop: dict) -> None:
             "sk": f"CROP#{crop_id}",
             "status": "pending",
             "crop_key": crop_key,
+            # 0-1 fractions of the full photo, not pixels - see the comment
+            # where detect_and_crop builds this dict. round()+str() avoids
+            # Decimal's binary-float-repr surprises on these floats, same as
+            # the detection_score field just below.
             "bbox": {
-                "x1": Decimal(bbox["x1"]),
-                "y1": Decimal(bbox["y1"]),
-                "x2": Decimal(bbox["x2"]),
-                "y2": Decimal(bbox["y2"]),
+                "x1": Decimal(str(round(bbox["x1"], 6))),
+                "y1": Decimal(str(round(bbox["y1"], 6))),
+                "x2": Decimal(str(round(bbox["x2"], 6))),
+                "y2": Decimal(str(round(bbox["y2"], 6))),
             },
             "detection_score": Decimal(str(round(crop["score"], 4))),
             "created_at": now,
