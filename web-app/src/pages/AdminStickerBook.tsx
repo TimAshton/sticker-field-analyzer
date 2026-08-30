@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 import { TrashIcon } from "../components/NavIcons";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
@@ -26,7 +27,6 @@ function AdminStickerBook() {
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Sticker | null>(null)
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -71,11 +71,6 @@ function AdminStickerBook() {
     return () => { cancelled = true }
   }, [])
 
-  const formattedDate = (iso: string) => {
-    if (!iso) return 'Unknown'
-    return new Date(iso).toLocaleString()
-  }
-
   const deleteSticker = async (id: string) => {
     setDeletingIds((prev) => new Set(prev).add(id))
     try {
@@ -84,7 +79,6 @@ function AdminStickerBook() {
         throw new Error(`Server returned ${res.status}`)
       }
       setStickers((prev) => prev.filter((s) => s.id !== id))
-      setSelected((prev) => (prev?.id === id ? null : prev))
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to delete sticker')
       setDeletingIds((prev) => {
@@ -114,15 +108,15 @@ function AdminStickerBook() {
                 opacity: deletingIds.has(sticker.id) ? 0.4 : 1,
               }}
             >
-              <button
-                onClick={() => setSelected(sticker)}
+              <Link
+                to={`/admin/sticker-book/${sticker.id}`}
                 style={{
                   padding: 0, cursor: 'pointer', lineHeight: 0,
                   border: 'none', background: 'none', display: 'block', width: '100%',
                 }}
               >
                 <img src={sticker.imageUrl} alt="Sticker" style={{ width: '100%', display: 'block' }} />
-              </button>
+              </Link>
               {sticker.matches.length > 0 && (
                 <span
                   title={`${sticker.matches.length} known-sticker match${sticker.matches.length === 1 ? '' : 'es'}`}
@@ -155,52 +149,6 @@ function AdminStickerBook() {
               </button>
             </div>
           ))}
-        </div>
-      )}
-
-
-      {selected && (
-        <div
-          onClick={() => setSelected(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '1.5rem', zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
-          >
-            <img
-              src={selected.imageUrl}
-              alt="Sticker enlarged"
-              style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
-            />
-            <div style={{ color: 'white' }}>
-              <p>Status: {selected.status}</p>
-              <p>Uploaded: {formattedDate(selected.createdAt)}</p>
-              <p>ID: {selected.id}</p>
-              {selected.matches.length > 0 && (
-                <div>
-                  <p>Matched known stickers:</p>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                    {selected.matches.map((match) => (
-                      <li key={match.stickerId}>
-                        {match.designName || 'Untitled'} by {match.artist || 'Unknown'} ({(match.similarity * 100).toFixed(0)}% match)
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '0.75rem' }}>
-              <button onClick={() => setSelected(null)}>Close</button>
-              <button onClick={() => deleteSticker(selected.id)} disabled={deletingIds.has(selected.id)}>
-                Delete
-              </button>
-            </div>
-          </div>
         </div>
       )}
     </div>

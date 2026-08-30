@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
@@ -15,7 +16,6 @@ function Refs() {
   const [knownStickers, setKnownStickers] = useState<KnownSticker[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [selected, setSelected] = useState<KnownSticker | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -52,11 +52,6 @@ function Refs() {
     return () => { cancelled = true }
   }, [])
 
-  const formattedDate = (iso: string) => {
-    if (!iso) return 'Unknown'
-    return new Date(iso).toLocaleString()
-  }
-
   return (
     <div className="page" style={{ width: '100%' }}>
       {loading && <p>Loading known stickers...</p>}
@@ -66,9 +61,9 @@ function Refs() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', width: '100%' }}>
           {knownStickers.map((sticker) => (
-            <button
+            <Link
               key={sticker.id}
-              onClick={() => setSelected(sticker)}
+              to={`/admin/refs/${sticker.id}`}
               style={{
                 padding: 0, cursor: 'pointer', lineHeight: 0,
                 border: '3px solid #FF9C00', borderRadius: '8px',
@@ -80,39 +75,8 @@ function Refs() {
               <span style={{ lineHeight: 1.3, padding: '0.35rem', fontSize: '0.85rem', textAlign: 'center' }}>
                 {sticker.designName || 'Untitled'}
               </span>
-            </button>
+            </Link>
           ))}
-        </div>
-      )}
-
-
-      {selected && (
-        <div
-          onClick={() => setSelected(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '1.5rem', zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
-          >
-            <img
-              src={selected.imageUrl}
-              alt={selected.designName || 'Known sticker enlarged'}
-              style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
-            />
-            <div style={{ color: 'white' }}>
-              <p>Design: {selected.designName || 'Untitled'}</p>
-              <p>Artist: {selected.artist || 'Unknown'}</p>
-              <p>Status: {selected.status}</p>
-              <p>Added: {formattedDate(selected.createdAt)}</p>
-              <p>ID: {selected.id}</p>
-            </div>
-            <button onClick={() => setSelected(null)}>Close</button>
-          </div>
         </div>
       )}
     </div>

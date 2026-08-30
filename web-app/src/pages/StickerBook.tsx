@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Link } from "react-router-dom";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
@@ -21,7 +22,6 @@ function StickerBook() {
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [loading, setLoading] = useState(true)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [selected, setSelected] = useState<Sticker | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -65,11 +65,6 @@ function StickerBook() {
     return () => { cancelled = true }
   }, [])
 
-  const formattedDate = (iso: string) => {
-    if (!iso) return 'Unknown'
-    return new Date(iso).toLocaleString()
-  }
-
   return (
     <div className="page" style={{ width: '100%' }}>
       <p className="tagline">Stickers in the wild.</p>
@@ -81,14 +76,14 @@ function StickerBook() {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', width: '100%' }}>
           {stickers.map((sticker) => (
-            <button
+            <Link
               key={sticker.id}
-              onClick={() => setSelected(sticker)}
+              to={`/sticker-book/${sticker.id}`}
               style={{
                 position: 'relative',
                 padding: 0, cursor: 'pointer', lineHeight: 0,
                 border: '3px solid #FF9C00', borderRadius: '8px',
-                background: 'none', overflow: 'hidden',
+                background: 'none', overflow: 'hidden', display: 'block',
               }}
             >
               <img src={sticker.imageUrl} alt="Sticker" style={{ width: '100%', display: 'block' }} />
@@ -107,49 +102,8 @@ function StickerBook() {
                   {sticker.matches.length}
                 </span>
               )}
-            </button>
+            </Link>
           ))}
-        </div>
-      )}
-
-
-      {selected && (
-        <div
-          onClick={() => setSelected(null)}
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '1.5rem', zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{ maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
-          >
-            <img
-              src={selected.imageUrl}
-              alt="Sticker enlarged"
-              style={{ maxWidth: '100%', maxHeight: '75vh', objectFit: 'contain' }}
-            />
-            <div style={{ color: 'white' }}>
-              <p>Status: {selected.status}</p>
-              <p>Uploaded: {formattedDate(selected.createdAt)}</p>
-              <p>ID: {selected.id}</p>
-              {selected.matches.length > 0 && (
-                <div>
-                  <p>Matched known stickers:</p>
-                  <ul style={{ margin: 0, paddingLeft: '1.25rem' }}>
-                    {selected.matches.map((match) => (
-                      <li key={match.stickerId}>
-                        {match.designName || 'Untitled'} by {match.artist || 'Unknown'} ({(match.similarity * 100).toFixed(0)}% match)
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-            <button onClick={() => setSelected(null)}>Close</button>
-          </div>
         </div>
       )}
     </div>
