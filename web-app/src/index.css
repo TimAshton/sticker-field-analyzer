@@ -33,7 +33,7 @@ nav {
   display: flex;
   align-items: center;
   gap: 0;
-  margin: 8px 5px 0;
+  margin: calc(8px + env(safe-area-inset-top, 0px)) 5px 0;
   padding: 0 !important;
   background: var(--lcars-black);
 }
