@@ -61,11 +61,18 @@ class PresignedUrlResponse(BaseModel):
     object_key: str
     image_id: str
 
+class BoundingBox(BaseModel):
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+
 class MatchItem(BaseModel):
     sticker_id: str
     artist: str
     design_name: str
     similarity: float
+    bbox: BoundingBox | None = None
 
 class ImageListItem(BaseModel):
     image_id: str
@@ -287,9 +294,46 @@ def _get_matches(image_id: str) -> list[MatchItem]:
             artist=match.get("artist", ""),
             design_name=match.get("design_name", ""),
             similarity=float(match["similarity"]),
+            bbox=_get_crop_bbox(image_id, match.get("crop_id")),
         )
         for match in result.get("Items", [])
     ]
+
+
+def _get_crop_bbox(image_id: str, crop_id: str | None) -> BoundingBox | None:
+    # Joins a MATCH# item back to the CROP# item that produced it, to
+    # surface where in the photo the match came from - see
+    # detection/detect.py for how bbox is computed (0-1 fractions of the
+    # full photo) and match.py for why crop_id is on the MATCH# item. Uses
+    # Query (an exact image_id+sk match, so at most one item) rather than
+    # GetItem - this Lambda's IAM policy only grants Query on this table,
+    # and an exact-key Query does the same job without widening that scope.
+    # Best-effort: bbox is purely a "draw a highlight" nicety, never worth
+    # failing the whole match list over.
+    if not crop_id:
+        return None
+    try:
+        result = pipeline_table.query(
+            KeyConditionExpression=Key("image_id").eq(image_id) & Key("sk").eq(f"CROP#{crop_id}"),
+        )
+    except ClientError as e:
+        print(f"AWS ClientError fetching crop {crop_id} for {image_id}: {e}")
+        return None
+
+    items = result.get("Items", [])
+    bbox = items[0].get("bbox") if items else None
+    if not bbox:
+        return None
+
+    x1, y1, x2, y2 = float(bbox["x1"]), float(bbox["y1"]), float(bbox["x2"]), float(bbox["y2"])
+    # Crops written before bbox was normalized stored raw pixel coordinates
+    # instead of 0-1 fractions - those can't be told apart from a fraction
+    # by shape alone, but any coordinate over 1 is unambiguously a leftover
+    # pixel value, so skip rather than draw a garbage box.
+    if max(x1, y1, x2, y2) > 1:
+        return None
+
+    return BoundingBox(x1=x1, y1=y1, x2=x2, y2=y2)
 
 
 @app.delete(

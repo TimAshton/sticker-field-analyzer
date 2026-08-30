@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import ImageCarousel from "../components/ImageCarousel";
+import MatchOverlayImage, { type Bbox } from "../components/MatchOverlayImage";
 
 const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
 
@@ -9,6 +10,7 @@ type Match = {
   artist: string
   designName: string
   similarity: number
+  bbox: Bbox | null
 }
 
 type Sticker = {
@@ -45,7 +47,10 @@ function AdminStickerCarousel() {
         setStickers(
           data.images.map((img: {
             image_id: string; display_url: string; status: string; created_at: string
-            matches: { sticker_id: string; artist: string; design_name: string; similarity: number }[]
+            matches: {
+              sticker_id: string; artist: string; design_name: string; similarity: number
+              bbox: Bbox | null
+            }[]
           }) => ({
             id: img.image_id,
             imageUrl: img.display_url,
@@ -56,6 +61,7 @@ function AdminStickerCarousel() {
               artist: m.artist,
               designName: m.design_name,
               similarity: m.similarity,
+              bbox: m.bbox,
             })),
           }))
         )
@@ -106,6 +112,7 @@ function AdminStickerCarousel() {
 
   const sticker = stickers[index]
   const goTo = (i: number) => navigate(`/admin/sticker-book/${stickers[(i + stickers.length) % stickers.length].id}`)
+  const matchBoxes = sticker.matches.map((m) => m.bbox).filter((b): b is Bbox => b !== null)
 
   return (
     <ImageCarousel
@@ -120,6 +127,12 @@ function AdminStickerCarousel() {
       <p>Status: {sticker.status}</p>
       <p>Uploaded: {formattedDate(sticker.createdAt)}</p>
       <p>ID: {sticker.id}</p>
+      {matchBoxes.length > 0 && (
+        <div style={{ marginBottom: '0.75rem' }}>
+          <p>Matched region{matchBoxes.length === 1 ? '' : 's'}:</p>
+          <MatchOverlayImage imageUrl={sticker.imageUrl} alt="Matched regions highlighted" boxes={matchBoxes} />
+        </div>
+      )}
       {sticker.matches.length > 0 && (
         <div>
           <p>Matched known stickers:</p>
