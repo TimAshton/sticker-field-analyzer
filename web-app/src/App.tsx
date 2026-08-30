@@ -1,10 +1,13 @@
 import { BrowserRouter, Routes, Route, Link, Navigate, useLocation } from 'react-router-dom'
 import Upload from './pages/Upload'
 import StickerBook from './pages/StickerBook'
+import StickerCarousel from './pages/StickerCarousel'
 import Targets from './pages/Targets'
 import AddKnown from './pages/AddKnown'
 import Refs from './pages/Refs'
+import RefsCarousel from './pages/RefsCarousel'
 import AdminStickerBook from './pages/AdminStickerBook'
+import AdminStickerCarousel from './pages/AdminStickerCarousel'
 import AdminLayout from './components/AdminLayout'
 import { UploadIcon, BookIcon, PlusIcon, FolderIcon, MagnifierIcon, CrosshairIcon } from './components/NavIcons'
 
@@ -45,11 +48,14 @@ function App() {
           <Route path="/" element={<Navigate to="/sticker-book" replace />} />
           <Route path="/upload" element={<Upload />} />
           <Route path="/sticker-book" element={<StickerBook />} />
+          <Route path="/sticker-book/:id" element={<StickerCarousel />} />
           <Route path="/targets" element={<Targets />} />
           <Route path="/admin" element={<AdminLayout />}>
             <Route path="add-known" element={<AddKnown />} />
             <Route path="refs" element={<Refs />} />
+            <Route path="refs/:id" element={<RefsCarousel />} />
             <Route path="sticker-book" element={<AdminStickerBook />} />
+            <Route path="sticker-book/:id" element={<AdminStickerCarousel />} />
           </Route>
         </Routes>
       </div>
