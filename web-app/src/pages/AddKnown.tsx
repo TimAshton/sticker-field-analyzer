@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ChangeEvent } from 'react'
 
-const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
+const API_URL = import.meta.env.VITE_API_URL as string
 
 type UploadStatus = 'idle' | 'requesting' | 'uploading' | 'success' | 'error'
 
@@ -28,7 +28,7 @@ function AddKnown() {
     try {
       // 1. Ask the backend for a presigned S3 upload URL for the known-sticker bucket
       setStatus('requesting')
-      const presignRes = await fetch(`${PRESIGN_API_URL}/api/get-known-presigned-url`, {
+      const presignRes = await fetch(`${API_URL}/api/get-known-presigned-url`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 
-const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
+const API_URL = import.meta.env.VITE_API_URL as string
 
 type Match = {
   stickerId: string
@@ -28,7 +28,7 @@ function StickerBook() {
 
     async function loadImages() {
       try {
-        const res = await fetch(`${PRESIGN_API_URL}/api/images`)
+        const res = await fetch(`${API_URL}/api/images`)
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { TrashIcon } from "../components/NavIcons";
 
-const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
+const API_URL = import.meta.env.VITE_API_URL as string
 
 type Match = {
   stickerId: string
@@ -34,7 +34,7 @@ function AdminStickerBook() {
 
     async function loadImages() {
       try {
-        const res = await fetch(`${PRESIGN_API_URL}/api/images`)
+        const res = await fetch(`${API_URL}/api/images`)
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }
@@ -74,7 +74,7 @@ function AdminStickerBook() {
   const deleteSticker = async (id: string) => {
     setDeletingIds((prev) => new Set(prev).add(id))
     try {
-      const res = await fetch(`${PRESIGN_API_URL}/api/images/${id}`, { method: 'DELETE' })
+      const res = await fetch(`${API_URL}/api/images/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
       }

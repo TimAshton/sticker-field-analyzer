@@ -1,10 +1,11 @@
-# --- Presign API Lambda (api/main.py) ---
-# Generates short-lived S3 upload URLs so the React app can PUT images
-# directly to the sticker_images bucket without exposing AWS credentials
-# to the browser.
+# --- API Lambda (api/main.py) ---
+# Started as just presigned-upload generation; now also serves the read
+# side (GET /api/images, GET /api/known-stickers) and the admin delete
+# route, so it's named for what it is - the general API - not just its
+# original presign-only scope.
 
-resource "aws_iam_role" "presign_api_lambda" {
-  name = "sticker-field-analyzer-presign-api-role"
+resource "aws_iam_role" "api_lambda" {
+  name = "sticker-field-analyzer-api-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -21,8 +22,8 @@ resource "aws_iam_role" "presign_api_lambda" {
 }
 
 # Basic CloudWatch Logs permissions so the Lambda can actually log anything
-resource "aws_iam_role_policy_attachment" "presign_api_logs" {
-  role       = aws_iam_role.presign_api_lambda.name
+resource "aws_iam_role_policy_attachment" "api_logs" {
+  role       = aws_iam_role.api_lambda.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
@@ -31,9 +32,9 @@ resource "aws_iam_role_policy_attachment" "presign_api_logs" {
 # display/ so it can generate presigned view URLs for GET /api/images -
 # note the permission is required for the *presigned URL itself* to work
 # when a browser later uses it, not just for generating it.
-resource "aws_iam_role_policy" "presign_api_s3" {
-  name = "presign-api-s3-access"
-  role = aws_iam_role.presign_api_lambda.id
+resource "aws_iam_role_policy" "api_s3" {
+  name = "api-s3-access"
+  role = aws_iam_role.api_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -62,9 +63,9 @@ resource "aws_iam_role_policy" "presign_api_s3" {
 # it removes an upload's DynamoDB records (never the S3 image itself, see
 # api/main.py's delete_image) so it drops out of Sticker Book/the admin QA
 # view.
-resource "aws_iam_role_policy" "presign_api_dynamodb" {
-  name = "presign-api-dynamodb-access"
-  role = aws_iam_role.presign_api_lambda.id
+resource "aws_iam_role_policy" "api_dynamodb" {
+  name = "api-dynamodb-access"
+  role = aws_iam_role.api_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -88,13 +89,13 @@ resource "aws_iam_role_policy" "presign_api_dynamodb" {
 
 # Scoped to the known-stickers bucket's known/ prefix only. PutObject backs
 # /api/get-known-presigned-url's write step; GetObject backs GET
-# /api/known-stickers' presigned view URLs - same note as presign_api_s3
+# /api/known-stickers' presigned view URLs - same note as api_s3
 # above, this permission is required for the *presigned URL itself* to
 # work when a browser later uses it, not just for generating it. No
 # delete/list.
-resource "aws_iam_role_policy" "presign_api_known_s3" {
-  name = "presign-api-known-s3-access"
-  role = aws_iam_role.presign_api_lambda.id
+resource "aws_iam_role_policy" "api_known_s3" {
+  name = "api-known-s3-access"
+  role = aws_iam_role.api_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -119,9 +120,9 @@ resource "aws_iam_role_policy" "presign_api_known_s3" {
 # in S3). Scan backs GET /api/known-stickers' catalog listing - same
 # brute-force-Scan choice known_stickers.tf documents for this table (no
 # GSI, small manually-built catalog).
-resource "aws_iam_role_policy" "presign_api_known_dynamodb" {
-  name = "presign-api-known-dynamodb-access"
-  role = aws_iam_role.presign_api_lambda.id
+resource "aws_iam_role_policy" "api_known_dynamodb" {
+  name = "api-known-dynamodb-access"
+  role = aws_iam_role.api_lambda.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -140,9 +141,9 @@ resource "aws_iam_role_policy" "presign_api_known_dynamodb" {
   })
 }
 
-resource "aws_lambda_function" "presign_api" {
-  function_name = "sticker-field-analyzer-presign-api"
-  role          = aws_iam_role.presign_api_lambda.arn
+resource "aws_lambda_function" "api" {
+  function_name = "sticker-field-analyzer-api"
+  role          = aws_iam_role.api_lambda.arn
   handler       = "main.handler"
   runtime       = "python3.12"
   timeout       = 10
@@ -164,8 +165,8 @@ resource "aws_lambda_function" "presign_api" {
 
 # Function URL gives us a plain HTTPS endpoint with no API Gateway needed -
 # appropriate for a single low-traffic endpoint like this one.
-resource "aws_lambda_function_url" "presign_api" {
-  function_name      = aws_lambda_function.presign_api.function_name
+resource "aws_lambda_function_url" "api" {
+  function_name      = aws_lambda_function.api.function_name
   authorization_type = "NONE"
 
   cors {
@@ -181,7 +182,7 @@ resource "aws_lambda_function_url" "presign_api" {
   }
 }
 
-output "presign_api_url" {
-  value       = aws_lambda_function_url.presign_api.function_url
-  description = "HTTPS endpoint the React app calls to request a presigned S3 upload URL"
+output "api_url" {
+  value       = aws_lambda_function_url.api.function_url
+  description = "HTTPS endpoint the React app calls for presigned uploads and reads (images, known-stickers)"
 }
