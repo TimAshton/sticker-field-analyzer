@@ -70,7 +70,7 @@ resource "aws_iam_role_policy" "match_dynamodb" {
         Resource = aws_dynamodb_table.known_stickers.arn
       },
       {
-        # Table-wide PutItem, same as presign_api_dynamodb's convention for
+        # Table-wide PutItem, same as api_dynamodb's convention for
         # a role that only ever creates new items (here, new MATCH# items -
         # never touches an image's existing METADATA item, avoiding a write
         # race with the ingest Lambda running in parallel).

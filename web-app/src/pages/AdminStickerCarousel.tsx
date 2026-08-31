@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import ImageCarousel from "../components/ImageCarousel";
 import MatchOverlayImage, { type Bbox } from "../components/MatchOverlayImage";
 
-const PRESIGN_API_URL = import.meta.env.VITE_PRESIGN_API_URL as string
+const API_URL = import.meta.env.VITE_API_URL as string
 
 type Match = {
   stickerId: string
@@ -37,7 +37,7 @@ function AdminStickerCarousel() {
 
     async function loadImages() {
       try {
-        const res = await fetch(`${PRESIGN_API_URL}/api/images`)
+        const res = await fetch(`${API_URL}/api/images`)
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }
@@ -86,7 +86,7 @@ function AdminStickerCarousel() {
   const deleteSticker = async (deleteId: string) => {
     setDeleting(true)
     try {
-      const res = await fetch(`${PRESIGN_API_URL}/api/images/${deleteId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_URL}/api/images/${deleteId}`, { method: 'DELETE' })
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
       }

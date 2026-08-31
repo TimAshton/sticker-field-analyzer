@@ -28,7 +28,7 @@ npm run build      # tsc -b && vite build
 npm run lint        # eslint .
 npm run preview     # preview production build
 ```
-Requires `web-app/.env` with `VITE_PRESIGN_API_URL` pointing at the presign API's Lambda Function URL.
+Requires `web-app/.env` with `VITE_API_URL` pointing at the `api` Lambda's Function URL.
 
 ### Backend Lambdas (`api/`, `ingest/`)
 No test suite or linter configured for either. Local run of the API:
@@ -70,7 +70,7 @@ Rebuild the lambda zips first (above) — `source_code_hash` is computed from th
 ## Architecture
 
 ### Upload → display pipeline
-1. Frontend requests a presigned PUT URL from the presign API (`POST /api/get-presigned-url`), which also writes the initial DynamoDB pipeline record (`status=uploaded`) and returns an `image_id` (UUID4, doubles as the S3 key prefix and the DynamoDB partition key).
+1. Frontend requests a presigned PUT URL from the `api` Lambda (`POST /api/get-presigned-url`), which also writes the initial DynamoDB pipeline record (`status=uploaded`) and returns an `image_id` (UUID4, doubles as the S3 key prefix and the DynamoDB partition key).
 2. Frontend PUTs the file bytes straight to S3 (`stickers/<image_id>.<ext>`) — the API server never touches image bytes.
 3. That S3 write fires an `ObjectCreated` event that invokes the ingest Lambda, which EXIF-transposes, resizes (≤1600px), re-encodes as JPEG, extracts GPS if present, writes `display/<image_id>.jpg`, and flips the pipeline record to `status=display_ready`.
 4. Frontend's Sticker Book page (`GET /api/images`) queries DynamoDB's `status-index` GSI for `display_ready` items and gets back presigned GET URLs (1hr TTL) for each — the uploads bucket is private, nothing is ever public.
@@ -80,7 +80,7 @@ Detection/cropping — splitting a field photo into individual stickers, ported 
 ### Known-sticker catalog + match-on-upload logging
 A separate, deployed pipeline for building a reference catalog and flagging matches — see `embedding/` for the code and `known_stickers.tf`/`embed_known_lambda.tf`/`match_lambda.tf` for the infra.
 
-1. **Add Known**: the frontend's Add Known page → `POST /api/get-known-presigned-url` (same presign-Lambda as uploads, different bucket/table) → browser PUTs a single, pre-isolated reference sticker image to `known/<sticker_id>.<ext>` in a dedicated `known-stickers` bucket, plus a DynamoDB row (`status=pending_embedding`) in a dedicated, flat `known-stickers` table (PK `sticker_id` only — no SK/GSI, brute-force `Scan` was a deliberate choice over indexing since this catalog is manually built and stays small).
+1. **Add Known**: the frontend's Add Known page → `POST /api/get-known-presigned-url` (same `api` Lambda as uploads, different bucket/table) → browser PUTs a single, pre-isolated reference sticker image to `known/<sticker_id>.<ext>` in a dedicated `known-stickers` bucket, plus a DynamoDB row (`status=pending_embedding`) in a dedicated, flat `known-stickers` table (PK `sticker_id` only — no SK/GSI, brute-force `Scan` was a deliberate choice over indexing since this catalog is manually built and stays small).
 2. That S3 write directly triggers the `embed-known` Lambda (a normal S3→Lambda notification, since it's the *only* consumer of that bucket's events), which computes a CLIP embedding and flips the row to `status=embedded`.
 3. Each crop the `detect` Lambda writes under `crops/` also triggers the `match` Lambda, via **EventBridge, not a direct S3 notification** (see the constraint below for why) — originally `match` ran directly off the raw `stickers/` upload instead, comparing the whole field photo against the catalog, but that structurally couldn't score well (confirmed with real data: topped out around 0.73-0.74 against a clean reference) so it was rewired to run per-crop. `match` embeds the crop, brute-force cosine-compares it against every `embedded` known sticker, and if the best score clears `MATCH_SIMILARITY_THRESHOLD` (the one tunable env var on the `match` Lambda, currently `0.65` — lowered from an initial `0.90` for exploration while still calibrating against real matches), logs a `PK=image_id, SK="MATCH#<sticker_id>"` item onto the *existing* pipeline table (one image can produce several MATCH# items if different crops match different known stickers) — nothing currently acts on a match beyond the Sticker Book UI showing it, it's otherwise logging only.
 4. The frontend's **Refs** page (`web-app/src/pages/Refs.tsx`) → `GET /api/known-stickers` lists the whole catalog (every status, not just `embedded` — browsing your own reference catalog benefits from seeing pending/failed entries too), the same brute-force `Scan` + presigned-GET-URL pattern `/api/images` uses for the Sticker Book gallery.
@@ -92,7 +92,7 @@ The web app is also reachable at `https://stickers.tashton.com` (Route 53 alias 
 - PK `image_id`, SK `METADATA` — one item per upload. `status`: `uploaded → display_ready → extracted → enrichment_complete` (or `failed`).
 - PK `image_id`, SK `CROP#<crop_id>` — one item per extracted sticker (future; written by the not-yet-built detection stage). `status`: `pending | enriched | failed`.
 - GSI `status-index` (hash `status`, range `updated_at`) — used to query "all images at status X", e.g. the API's `display_ready` list. Because METADATA and CROP items use disjoint status vocabularies, a query on an image-status value can never accidentally match a crop item.
-- Each Lambda's IAM policy is scoped to the specific DynamoDB actions it needs (presign API: `PutItem` + `Query` on the GSI only; ingest: `UpdateItem` only) — preserve that scoping if you add new access patterns rather than widening an existing policy.
+- Each Lambda's IAM policy is scoped to the specific DynamoDB actions it needs (`api`: `PutItem` + `Query` on the GSI only; ingest: `UpdateItem` only) — preserve that scoping if you add new access patterns rather than widening an existing policy.
 
 ### S3 layout (`sticker-field-analyzer-uploads-*` bucket)
 - `stickers/<image_id>.<ext>` — original upload (private).
