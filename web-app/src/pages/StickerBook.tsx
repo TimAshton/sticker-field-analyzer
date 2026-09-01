@@ -86,7 +86,14 @@ function StickerBook() {
                 background: 'none', overflow: 'hidden', display: 'block',
               }}
             >
-              <img src={sticker.imageUrl} alt="Sticker" style={{ width: '100%', display: 'block' }} />
+              <img
+                src={sticker.imageUrl}
+                alt="Sticker"
+                style={{
+                  width: '100%', display: 'block',
+                  filter: sticker.matches.length === 0 ? 'grayscale(1)' : undefined,
+                }}
+              />
               {sticker.matches.length > 0 && (
                 <span
                   title={`${sticker.matches.length} known-sticker match${sticker.matches.length === 1 ? '' : 'es'}`}
