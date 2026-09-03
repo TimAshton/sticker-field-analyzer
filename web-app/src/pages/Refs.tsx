@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL as string
+import { apiFetch } from '../lib/api'
 
 type KnownSticker = {
   id: string
@@ -22,7 +21,7 @@ function Refs() {
 
     async function loadKnownStickers() {
       try {
-        const res = await fetch(`${API_URL}/api/known-stickers`)
+        const res = await apiFetch('/api/known-stickers')
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }

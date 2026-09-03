@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { TrashIcon } from "../components/NavIcons";
-
-const API_URL = import.meta.env.VITE_API_URL as string
+import { apiFetch } from '../lib/api'
 
 type Match = {
   stickerId: string
@@ -22,7 +21,7 @@ type Sticker = {
 // Admin-only QA view of the same upload list Sticker Book shows, with a
 // one-click delete per tile. Deleting only removes the DynamoDB record
 // (via DELETE /api/images/{id}) - the S3 image is deliberately left in
-// place. Not access-controlled yet, same as the rest of /admin/*.
+// place.
 function AdminStickerBook() {
   const [stickers, setStickers] = useState<Sticker[]>([])
   const [loading, setLoading] = useState(true)
@@ -34,7 +33,7 @@ function AdminStickerBook() {
 
     async function loadImages() {
       try {
-        const res = await fetch(`${API_URL}/api/images`)
+        const res = await apiFetch('/api/images')
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }
@@ -74,7 +73,7 @@ function AdminStickerBook() {
   const deleteSticker = async (id: string) => {
     setDeletingIds((prev) => new Set(prev).add(id))
     try {
-      const res = await fetch(`${API_URL}/api/images/${id}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/images/${id}`, { method: 'DELETE' })
       if (!res.ok) {
         throw new Error(`Server returned ${res.status}`)
       }

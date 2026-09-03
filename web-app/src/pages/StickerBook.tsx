@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-
-const API_URL = import.meta.env.VITE_API_URL as string
+import { apiFetch } from '../lib/api'
 
 type Match = {
   stickerId: string
@@ -28,7 +27,7 @@ function StickerBook() {
 
     async function loadImages() {
       try {
-        const res = await fetch(`${API_URL}/api/images`)
+        const res = await apiFetch('/api/images')
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }

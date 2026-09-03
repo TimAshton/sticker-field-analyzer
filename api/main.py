@@ -1,7 +1,11 @@
+import json
 import os
+import urllib.request
 import uuid
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, status
+from jose import jwt
+from jose.exceptions import JWTError
 from pydantic import BaseModel, Field
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -48,6 +52,74 @@ pipeline_table = dynamodb.Table(TABLE_NAME)
 KNOWN_BUCKET_NAME = os.getenv("KNOWN_STICKERS_BUCKET_NAME", "YOUR_TERRAFORM_COMPUTED_BUCKET_NAME")
 KNOWN_TABLE_NAME = os.getenv("KNOWN_STICKERS_TABLE_NAME", "YOUR_TERRAFORM_COMPUTED_TABLE_NAME")
 known_stickers_table = dynamodb.Table(KNOWN_TABLE_NAME)
+
+# Auth - verifies Cognito ID tokens from the *shared* game-company user
+# pool (see terraform/environments/dev/auth.tf; this app doesn't own or
+# provision the pool itself). The Function URL's authorization_type stays
+# "NONE" (Cognito's SRP/direct-SDK model doesn't map to IAM SigV4), so
+# every route enforces this itself via the verify_token/require_admin
+# dependencies below instead.
+COGNITO_USER_POOL_ID = os.getenv("COGNITO_USER_POOL_ID", "YOUR_TERRAFORM_COMPUTED_POOL_ID")
+COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID", "YOUR_TERRAFORM_COMPUTED_CLIENT_ID")
+COGNITO_REGION = os.getenv("COGNITO_REGION", "us-east-1")
+COGNITO_ISSUER = f"https://cognito-idp.{COGNITO_REGION}.amazonaws.com/{COGNITO_USER_POOL_ID}"
+COGNITO_JWKS_URL = f"{COGNITO_ISSUER}/.well-known/jwks.json"
+
+# Fetched and cached lazily on first use, not at module scope - same
+# lazy-cache idiom embedding/common.py's _get_model() uses for cold-start
+# reasons, though here it's just to avoid refetching the JWKS on every
+# warm invocation rather than blowing Lambda's ~10s INIT-phase timeout.
+_jwks_cache: dict | None = None
+
+
+def _get_jwks() -> dict:
+    global _jwks_cache
+    if _jwks_cache is None:
+        with urllib.request.urlopen(COGNITO_JWKS_URL, timeout=5) as resp:
+            _jwks_cache = json.loads(resp.read())
+    return _jwks_cache
+
+
+def verify_token(authorization: str | None = Header(default=None)) -> dict:
+    # FastAPI dependency gating every route below - verifies the bearer
+    # token's signature against the pool's public JWKS and checks it's a
+    # non-expired ID token (not an access token) issued for this pool/client.
+    # See web-app/src/lib/api.ts for how the frontend attaches this header.
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing bearer token")
+
+    token = authorization.removeprefix("Bearer ")
+    try:
+        unverified_header = jwt.get_unverified_header(token)
+        key = next(
+            (k for k in _get_jwks()["keys"] if k["kid"] == unverified_header.get("kid")),
+            None,
+        )
+        if key is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+        claims = jwt.decode(
+            token,
+            key,
+            algorithms=["RS256"],
+            audience=COGNITO_CLIENT_ID,
+            issuer=COGNITO_ISSUER,
+        )
+    except (JWTError, KeyError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    if claims.get("token_use") != "id":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+    return claims
+
+
+def require_admin(claims: dict = Depends(verify_token)) -> dict:
+    # Extra check on top of verify_token for admin-only routes - requires
+    # the signed-in account to be in the shared pool's "admins" group.
+    if "admins" not in claims.get("cognito:groups", []):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return claims
 
 # Allowed image mime-types for the sticker field analyzer app
 ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
@@ -124,7 +196,7 @@ def _presign_put(bucket: str, key: str, content_type: str) -> str:
     response_model=PresignedUrlResponse,
     status_code=status.HTTP_201_CREATED
 )
-async def generate_presigned_url(payload: PresignedUrlRequest):
+async def generate_presigned_url(payload: PresignedUrlRequest, _claims: dict = Depends(verify_token)):
     # 1. Enforce strict content-type validation on the server side
     if payload.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -176,7 +248,9 @@ async def generate_presigned_url(payload: PresignedUrlRequest):
     response_model=KnownStickerPresignedUrlResponse,
     status_code=status.HTTP_201_CREATED
 )
-async def generate_known_sticker_presigned_url(payload: KnownStickerPresignedUrlRequest):
+async def generate_known_sticker_presigned_url(
+    payload: KnownStickerPresignedUrlRequest, _claims: dict = Depends(verify_token)
+):
     # 1. Enforce strict content-type validation on the server side
     if payload.content_type not in ALLOWED_TYPES:
         raise HTTPException(
@@ -227,7 +301,7 @@ async def generate_known_sticker_presigned_url(payload: KnownStickerPresignedUrl
     "/api/images",
     response_model=ImageListResponse,
 )
-async def list_images():
+async def list_images(_claims: dict = Depends(verify_token)):
     # Query the status-index GSI rather than scanning the whole table -
     # only images the ingest Lambda has finished resizing are worth
     # showing, so this naturally excludes still-processing or failed ones.
@@ -340,12 +414,12 @@ def _get_crop_bbox(image_id: str, crop_id: str | None) -> BoundingBox | None:
     "/api/images/{image_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_image(image_id: str):
-    # Admin-only QA action (no auth on this route yet - see web-app's
-    # /admin routes). Deletes every DynamoDB record for this upload
-    # (METADATA plus any CROP#/MATCH# children) so it drops out of both
-    # Sticker Book and the admin QA view - but never touches S3, the
-    # actual image files are deliberately left in place.
+async def delete_image(image_id: str, _claims: dict = Depends(require_admin)):
+    # Admin-only QA action, gated by require_admin above. Deletes every
+    # DynamoDB record for this upload (METADATA plus any CROP#/MATCH#
+    # children) so it drops out of both Sticker Book and the admin QA view -
+    # but never touches S3, the actual image files are deliberately left
+    # in place.
     try:
         result = pipeline_table.query(
             KeyConditionExpression=Key("image_id").eq(image_id),
@@ -364,7 +438,7 @@ async def delete_image(image_id: str):
     "/api/known-stickers",
     response_model=KnownStickerListResponse,
 )
-async def list_known_stickers():
+async def list_known_stickers(_claims: dict = Depends(verify_token)):
     # No status-index GSI on this table (see known_stickers.tf) - it's a
     # flat, manually-built catalog, so brute-force Scan is the deliberate
     # choice here too, same as embedding/match.py's _scan_embedded_known_stickers.

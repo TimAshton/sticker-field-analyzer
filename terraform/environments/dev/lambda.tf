@@ -159,6 +159,9 @@ resource "aws_lambda_function" "api" {
       DYNAMODB_TABLE_NAME        = aws_dynamodb_table.sticker_pipeline.name
       KNOWN_STICKERS_BUCKET_NAME = aws_s3_bucket.known_stickers.id
       KNOWN_STICKERS_TABLE_NAME  = aws_dynamodb_table.known_stickers.name
+      COGNITO_USER_POOL_ID       = local.cognito_user_pool_id
+      COGNITO_CLIENT_ID          = local.cognito_client_id
+      COGNITO_REGION             = local.cognito_region
     }
   }
 }
@@ -176,7 +179,7 @@ resource "aws_lambda_function_url" "api" {
       "https://stickers.tashton.com",
     ]
     allow_methods     = ["POST", "GET", "DELETE"]
-    allow_headers     = ["content-type"]
+    allow_headers     = ["content-type", "authorization"]
     allow_credentials = false
     max_age           = 300
   }

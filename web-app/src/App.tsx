@@ -8,7 +8,10 @@ import Refs from './pages/Refs'
 import RefsCarousel from './pages/RefsCarousel'
 import AdminStickerBook from './pages/AdminStickerBook'
 import AdminStickerCarousel from './pages/AdminStickerCarousel'
+import Login from './pages/Login'
 import AdminLayout from './components/AdminLayout'
+import RequireAuth from './components/RequireAuth'
+import { AuthProvider } from './context/AuthProvider'
 import { UploadIcon, BookIcon, PlusIcon, FolderIcon, MagnifierIcon, CrosshairIcon } from './components/NavIcons'
 
 // One nav, showing only the links relevant to the current section - the
@@ -21,7 +24,6 @@ function Nav() {
   if (isAdmin) {
     return (
       <nav>
-        {/* /admin/* isn't access-controlled yet - add auth before this is public */}
         <Link to="/admin/add-known" title="Add Known" aria-label="Add Known"><PlusIcon /></Link>
         <Link to="/admin/refs" title="Refs" aria-label="Refs"><FolderIcon /></Link>
         <Link to="/admin/sticker-book" title="QA Sticker Book" aria-label="QA Sticker Book"><MagnifierIcon /></Link>
@@ -41,24 +43,28 @@ function Nav() {
 function App() {
   return (
     <BrowserRouter>
-      <div>
-        <Nav />
+      <AuthProvider>
+        <div>
+          <Nav />
 
-        <Routes>
-          <Route path="/" element={<Navigate to="/sticker-book" replace />} />
-          <Route path="/upload" element={<Upload />} />
-          <Route path="/sticker-book" element={<StickerBook />} />
-          <Route path="/sticker-book/:id" element={<StickerCarousel />} />
-          <Route path="/targets" element={<Targets />} />
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route path="add-known" element={<AddKnown />} />
-            <Route path="refs" element={<Refs />} />
-            <Route path="refs/:id" element={<RefsCarousel />} />
-            <Route path="sticker-book" element={<AdminStickerBook />} />
-            <Route path="sticker-book/:id" element={<AdminStickerCarousel />} />
-          </Route>
-        </Routes>
-      </div>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<RequireAuth><Navigate to="/sticker-book" replace /></RequireAuth>} />
+            <Route path="/upload" element={<RequireAuth><Upload /></RequireAuth>} />
+            <Route path="/sticker-book" element={<RequireAuth><StickerBook /></RequireAuth>} />
+            <Route path="/sticker-book/:id" element={<RequireAuth><StickerCarousel /></RequireAuth>} />
+            <Route path="/targets" element={<RequireAuth><Targets /></RequireAuth>} />
+            {/* AdminLayout itself adds the extra "admins" group check (RequireAdmin) on top of this */}
+            <Route path="/admin" element={<RequireAuth><AdminLayout /></RequireAuth>}>
+              <Route path="add-known" element={<AddKnown />} />
+              <Route path="refs" element={<Refs />} />
+              <Route path="refs/:id" element={<RefsCarousel />} />
+              <Route path="sticker-book" element={<AdminStickerBook />} />
+              <Route path="sticker-book/:id" element={<AdminStickerCarousel />} />
+            </Route>
+          </Routes>
+        </div>
+      </AuthProvider>
     </BrowserRouter>
   )
 }
