@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import ImageCarousel from "../components/ImageCarousel";
-
-const API_URL = import.meta.env.VITE_API_URL as string
+import { apiFetch } from '../lib/api'
 
 type KnownSticker = {
   id: string
@@ -25,7 +24,7 @@ function RefsCarousel() {
 
     async function loadKnownStickers() {
       try {
-        const res = await fetch(`${API_URL}/api/known-stickers`)
+        const res = await apiFetch('/api/known-stickers')
         if (!res.ok) {
           throw new Error(`Server returned ${res.status}`)
         }

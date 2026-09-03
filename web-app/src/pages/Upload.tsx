@@ -1,8 +1,5 @@
 import { useState, type FormEvent, type ChangeEvent } from 'react'
-
-// Set this in web-app/.env (local) and as a build-time env var in CI:
-//   VITE_API_URL=https://azixo6bxwqywhz6x77arbuaetm0uuoff.lambda-url.us-west-2.on.aws
-const API_URL = import.meta.env.VITE_API_URL as string
+import { apiFetch } from '../lib/api'
 
 type UploadStatus = 'idle' | 'requesting' | 'uploading' | 'success' | 'error'
 
@@ -28,7 +25,7 @@ function Upload() {
     try {
       // 1. Ask the backend for a presigned S3 upload URL
       setStatus('requesting')
-      const presignRes = await fetch(`${API_URL}/api/get-presigned-url`, {
+      const presignRes = await apiFetch('/api/get-presigned-url', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

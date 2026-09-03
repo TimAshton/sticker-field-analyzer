@@ -37,6 +37,9 @@ jobs:
         run: npm run build
         env:
           VITE_API_URL: ${{ vars.API_URL }}
+          VITE_COGNITO_USER_POOL_ID: ${{ vars.COGNITO_USER_POOL_ID }}
+          VITE_COGNITO_CLIENT_ID: ${{ vars.COGNITO_CLIENT_ID }}
+          VITE_COGNITO_REGION: ${{ vars.COGNITO_REGION }}
 
       # --- Bootstrap credentials just to read Terraform outputs ---
       # Uses the same OIDC role. That role's trust policy already scopes
